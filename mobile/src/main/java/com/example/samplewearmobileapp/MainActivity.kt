@@ -942,6 +942,18 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
     }
 
     private fun connectPolarDevice() {
+        if (deviceId.isNullOrEmpty()) {
+            Toast.makeText(this,
+                "Please enter a Polar Device ID in Settings first.",
+                Toast.LENGTH_LONG).show()
+            return
+        }
+        if (polarApi == null) {
+            Toast.makeText(this,
+                "Polar API is not initialized. Please enter a valid Device ID in Settings.",
+                Toast.LENGTH_LONG).show()
+            return
+        }
         val handler = Handler(Looper.getMainLooper())
         handler.postDelayed({
             if (!isPolarDeviceConnected) {
