@@ -96,6 +96,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
     private var wearMessage: Message? = null
     private var appState = 0
     private var bluetoothState = STATE_OFF
+    private var isBluetoothReceiverRegistered = false
 
     private var ppgGreenValueNumber = 0
     private var ppgIrValueNumber = 0
@@ -705,14 +706,45 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
         requestCode: Int, permissions: Array<String>, grantResults:
         IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == REQUEST_CODE_PERMISSIONS) {
-            if (allPermissionsGranted()) {
+        when (requestCode) {
+            REQUEST_CODE_PERMISSIONS -> {
+                if (allPermissionsGranted()) {
+                    // Check if we need to request background location separately
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && 
+                        BACKGROUND_PERMISSIONS.isNotEmpty() &&
+                        ContextCompat.checkSelfPermission(
+                            this, 
+                            Manifest.permission.ACCESS_BACKGROUND_LOCATION
+                        ) != PackageManager.PERMISSION_GRANTED) {
+                        // Request background location permission
+                        ActivityCompat.requestPermissions(
+                            this, 
+                            BACKGROUND_PERMISSIONS, 
+                            REQUEST_CODE_BACKGROUND_PERMISSIONS
+                        )
+                    } else {
+                        // All permissions granted, setup Bluetooth
+                        setupBluetooth()
+                    }
+                } else {
+                    Toast.makeText(this,
+                        "Permissions not granted. Some features may not work. " +
+                        "You can grant permissions in Settings.",
+                        Toast.LENGTH_LONG).show()
+                }
+            }
+            REQUEST_CODE_BACKGROUND_PERMISSIONS -> {
+                // Background location permission result
+                if (grantResults.isNotEmpty() && 
+                    grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                    Log.d(TAG, "Background location permission granted")
+                } else {
+                    Toast.makeText(this,
+                        "Background location permission denied. Some features may be limited.",
+                        Toast.LENGTH_LONG).show()
+                }
+                // Continue with Bluetooth setup regardless
                 setupBluetooth()
-            } else {
-                Toast.makeText(this,
-                    "Permissions not granted by the user.",
-                    Toast.LENGTH_SHORT).show()
-                finish()
             }
         }
     }
@@ -1050,13 +1082,17 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
         Log.i(TAG,"Lifecycle: onRestart()")
         // re-register bluetooth state receiver
         registerReceiver(bluetoothStateReceiver, BluetoothService.BLUETOOTH_STATE_FILTER)
+        isBluetoothReceiverRegistered = true
     }
 
     override fun onStop() {
         super.onStop()
         Log.i(TAG, "Lifecycle: onStop()")
         // unregister receiver
-        unregisterReceiver(bluetoothStateReceiver)
+        if (isBluetoothReceiverRegistered) {
+            unregisterReceiver(bluetoothStateReceiver)
+            isBluetoothReceiverRegistered = false
+        }
     }
 
     override fun onDestroy() {
@@ -1064,7 +1100,10 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
         Log.i(TAG,"Lifecycle: onDestroy()")
         polarApi?.shutDown()
         // unregister receiver
-        unregisterReceiver(bluetoothStateReceiver)
+        if (isBluetoothReceiverRegistered) {
+            unregisterReceiver(bluetoothStateReceiver)
+            isBluetoothReceiverRegistered = false
+        }
         sharedPreferences?.unregisterOnSharedPreferenceChangeListener(this)
     }
 
@@ -2380,6 +2419,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
         // Currently the sampling rate for ECG is fixed at 130
 //        private const val MAX_DEVICES = 3
         const val REQUEST_CODE_PERMISSIONS = 10
+        const val REQUEST_CODE_BACKGROUND_PERMISSIONS = 11
         private val REQUIRED_PERMISSIONS =
             mutableListOf(
                 Manifest.permission.ACCESS_COARSE_LOCATION,
@@ -2394,11 +2434,15 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
                     add(Manifest.permission.BLUETOOTH_SCAN)
                     add(Manifest.permission.BLUETOOTH_CONNECT)
                 }
-            }.apply {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    add(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
-                }
             }.toTypedArray()
+        
+        // Background location must be requested separately after foreground permissions
+        private val BACKGROUND_PERMISSIONS =
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                arrayOf(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+            } else {
+                emptyArray()
+            }
     }
 
     private fun logEpochInfo(timeZoneString: String) {
