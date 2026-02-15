@@ -198,6 +198,7 @@ class MainActivity :
                     Log.i(tag, "Green PPG Data received")
                     currentPpgGreenDataNumber++
                     this@MainActivity.runOnUiThread {
+                        textPpgGreenStatus.text = getString(R.string.status_measuring)
                         textPpgGreen.text = ppgGreenData.ppgValue.toString()
                         Log.i(tag, "PPG Green : ${ppgGreenData.ppgValue}")
                         textPpgGreenTimestamp.text = ppgGreenData.timestamp.toString()
