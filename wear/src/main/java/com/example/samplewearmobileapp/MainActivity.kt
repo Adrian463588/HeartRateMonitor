@@ -72,6 +72,7 @@ class MainActivity :
 //    private lateinit var textIbiStatus: TextView
     private lateinit var ppgGreenContainer: LinearLayout
     private lateinit var textPpgGreen: TextView
+    private lateinit var textPpgGreenStatus: TextView
     private lateinit var textPpgGreenNumber: TextView
     private lateinit var textPpgGreenTimestamp: TextView
     private lateinit var ppgIrContainer: LinearLayout
@@ -404,6 +405,7 @@ class MainActivity :
 //        textIbi = binding.ibi
 //        textIbiStatus = binding.ibiStatus
         ppgGreenContainer = binding.ppgGreenContainer
+        textPpgGreenStatus = binding.ppgGreenStatus
         textPpgGreenNumber = binding.ppgGreenNumber
         textPpgGreen = binding.ppgGreen
         textPpgGreenTimestamp = binding.ppgGreenTimestamp
@@ -425,6 +427,7 @@ class MainActivity :
 //        textHeartRateStatus.text = getString(R.string.default_status)
 //        textIbi.text = getString(R.string.default_value)
 //        textIbiStatus.text = getString(R.string.default_status)
+        textPpgGreenStatus.text = getString(R.string.default_status)
         textPpgGreenNumber.text = getString(R.string.default_value)
         textPpgGreen.text = getString(R.string.default_value)
         textPpgGreenTimestamp.text = getString(R.string.default_value)
@@ -483,6 +486,7 @@ class MainActivity :
             !ppgRedListener.isTracking()) {
             runOnUiThread {
                 textStatus.text = getString(R.string.status_stopped)
+                textPpgGreenStatus.text = getString(R.string.status_stopped)
                 textPpgIrStatus.text = getString(R.string.status_stopped)
                 textPpgRedStatus.text = getString(R.string.status_stopped)
             }
@@ -499,12 +503,14 @@ class MainActivity :
     override fun onDestroy() {
         Log.d(tag, "onDestroy")
         super.onDestroy()
-//        heartRateListener.stopTracker()
-        ppgGreenListener.stopTracker()
-        ppgIrListener.stopTracker()
-        ppgRedListener.stopTracker()
-        TrackerDataNotifier.instance?.removeObserver(trackerDataObserver)
-        connectionManager.disconnect()
+        if (connected) {
+//            heartRateListener.stopTracker()
+            ppgGreenListener.stopTracker()
+            ppgIrListener.stopTracker()
+            ppgRedListener.stopTracker()
+            TrackerDataNotifier.instance?.removeObserver(trackerDataObserver)
+            connectionManager.disconnect()
+        }
     }
 
     private fun createConnectionManager() {
@@ -540,6 +546,12 @@ class MainActivity :
     }
 
     private fun onMessageArrived(messagePath: String) {
+        // Guard: Samsung Health listeners may not be initialized yet
+        if (!connected) {
+            Log.w("Wear", "onMessageArrived: Ignoring message on path '$messagePath' " +
+                    "— Samsung Health not connected yet")
+            return
+        }
         currentMessage?.let {
             when (messagePath) {
                 MessagePath.COMMAND -> {
@@ -569,6 +581,7 @@ class MainActivity :
 
                             runOnUiThread {
                                 textStatus.text = getString(R.string.status_stopped)
+                                textPpgGreenStatus.text = getString(R.string.status_stopped)
                                 textPpgIrStatus.text = getString(R.string.status_stopped)
                                 textPpgRedStatus.text = getString(R.string.status_stopped)
                             }
@@ -581,6 +594,7 @@ class MainActivity :
                         ActivityCode.PAUSE_ACTIVITY -> { // pause all trackers
                             runOnUiThread {
                                 textStatus.text = getString(R.string.status_paused)
+                                textPpgGreenStatus.text = getString(R.string.status_paused)
                                 textPpgIrStatus.text = getString(R.string.status_paused)
                                 textPpgRedStatus.text = getString(R.string.status_paused)
                             }
@@ -588,6 +602,9 @@ class MainActivity :
                             ppgGreenListener.stopTracker()
                             ppgIrListener.stopTracker()
                             ppgRedListener.stopTracker()
+
+                            // Notify Phone of paused state
+                            switchState(ActivityCode.PAUSE_ACTIVITY)
                         }
                         ActivityCode.DO_NOTHING -> {
                             runOnUiThread {
@@ -887,19 +904,17 @@ class MainActivity :
     }
 
     /**
-     * Toggles app state between 0 and 1.
+     * Sets the app state and sends it to the Phone via INFO message.
      *
-     * If a `forceCode` other than 0 or 1 has been passed before,
-     * `switchState` will not work until another call with
-     *  a `forceCode` of 0 or 1 is executed.
+     * Supports state codes:
+     * - 0: DO_NOTHING / Stopped
+     * - 1: START_ACTIVITY / Running
+     * - 2: STOP_ACTIVITY / Stopped
+     * - 3: PAUSE_ACTIVITY / Paused
      *
-     * @param forceCode Optional.
-     * Any integer other than 99.
+     * If no `forceCode` is given, toggles between 0 and 1.
      *
-     * If present, this function will set the force code
-     * as the app state. Note that using value other than 0 or 1
-     * will break the function until another call using 0 or 1
-     * as the force code.
+     * @param forceCode Optional. Sets the state directly.
      */
     private fun switchState(forceCode: Int = 99) {
         if (forceCode != 99) {
@@ -908,7 +923,7 @@ class MainActivity :
         else if (currentState == 0) {
             currentState = 1
         }
-        else if (currentState == 1) {
+        else if (currentState == 1 || currentState == ActivityCode.PAUSE_ACTIVITY) {
             currentState = 0
         }
         message.code = currentState

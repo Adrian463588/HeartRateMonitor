@@ -19,6 +19,7 @@
     <string name="ibi_status_good">Good</string>
     <string name="ibi_status_bad">Bad</string>
 
+    <string name="ppg_green_status_text">PPG Green Status : </string>
     <string name="ppg_green_number_text">PPG Green #</string>
     <string name="ppg_green_text">PPG Green : </string>
     <string name="ppg_green_timestamp">PPG Green Timestamp : </string>
