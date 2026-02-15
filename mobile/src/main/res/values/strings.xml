@@ -26,6 +26,7 @@
     <string name="status_disconnected">Disconnected</string>
     <string name="status_running">Running</string>
     <string name="status_stopped">Stopped</string>
+    <string name="status_paused">Paused</string>
     <string name="status_no_support">Not supported</string>
 
 <!--    <string name="reset">Reset from Wear starting</string>-->
@@ -80,6 +81,8 @@
     <string name="device_id_item">Set Device ID</string>
     <string name="settings_item">Settings</string>
     <string name="help_item">Help</string>
+    <string name="stop_recording_item">Stop Recording</string>
+    <string name="elapsed_time_formatted">%1$02d:%2$02d</string>
 
     <string name="button_ppg_green">PPG Green</string>
     <string name="button_ppg_ir">PPG IR</string>

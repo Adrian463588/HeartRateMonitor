@@ -564,6 +564,9 @@ class MainActivity :
                             startTracker(ppgRedListener)
                         }
                         ActivityCode.STOP_ACTIVITY -> { // stop all tracker
+                            // Flush any remaining buffered data before stopping
+                            flushRemainingData()
+
                             runOnUiThread {
                                 textStatus.text = getString(R.string.status_stopped)
                                 textPpgIrStatus.text = getString(R.string.status_stopped)
@@ -571,7 +574,17 @@ class MainActivity :
                             }
 
                             switchState(0)
-//                            heartRateListener.stopTracker()
+                            ppgGreenListener.stopTracker()
+                            ppgIrListener.stopTracker()
+                            ppgRedListener.stopTracker()
+                        }
+                        ActivityCode.PAUSE_ACTIVITY -> { // pause all trackers
+                            runOnUiThread {
+                                textStatus.text = getString(R.string.status_paused)
+                                textPpgIrStatus.text = getString(R.string.status_paused)
+                                textPpgRedStatus.text = getString(R.string.status_paused)
+                            }
+
                             ppgGreenListener.stopTracker()
                             ppgIrListener.stopTracker()
                             ppgRedListener.stopTracker()
@@ -698,30 +711,22 @@ class MainActivity :
 //        Log.i("Wear","Heart Data sent via DataApi!")
 //    }
 
-    private fun sendPpgData(ppgRecording: PpgRecording) {
+    private fun sendPpgData(ppgRecording: PpgRecording, actualSize: Int? = null) {
         val path: String
         val windowSize: Int
 
         when (ppgRecording.ppgType) {
             PpgType.PPG_GREEN -> {
                 path = MessagePath.DATA_PPG_GREEN
-                windowSize = PPG_GREEN_BATCH_SIZE
+                windowSize = actualSize ?: PPG_GREEN_BATCH_SIZE
             }
             PpgType.PPG_IR -> {
                 path = MessagePath.DATA_PPG_IR
-                /* TODO I don't know what's wrong with PPG_IR_RED_BATCH_SIZE
-                    but somehow the new 1200 value doesn't register and
-                    just keep sending per 100 data.
-                 */
-                /* TODO
-                    Also seems like the PPG IR and Red sample rate is way off
-                    and slower than expected. Try removing something to ease CPU work
-                 */
-                windowSize = PPG_IR_RED_BATCH_SIZE
+                windowSize = actualSize ?: PPG_IR_RED_BATCH_SIZE
             }
             PpgType.PPG_RED -> {
                 path = MessagePath.DATA_PPG_RED
-                windowSize = PPG_IR_RED_BATCH_SIZE
+                windowSize = actualSize ?: PPG_IR_RED_BATCH_SIZE
             }
         }
 
@@ -745,6 +750,32 @@ class MainActivity :
             PutDataRequest.create(path).setData(bytes).setUrgent()
         )
         Log.i("Wear","PPG Data sent via DataApi!\n$ppgData")
+    }
+
+    /**
+     * Flushes any remaining buffered PPG data that hasn't
+     * reached a full batch size. Called before stopping trackers
+     * to prevent data loss.
+     */
+    private fun flushRemainingData() {
+        val greenSize = ppgGreenRecording.getSize() ?: 0
+        if (greenSize > 0) {
+            sendPpgData(ppgGreenRecording, greenSize)
+            ppgGreenRecording.clearFromStartUntil(greenSize)
+            Log.i(tag, "Flushed $greenSize remaining PPG Green data points")
+        }
+        val irSize = ppgIrRecording.getSize() ?: 0
+        if (irSize > 0) {
+            sendPpgData(ppgIrRecording, irSize)
+            ppgIrRecording.clearFromStartUntil(irSize)
+            Log.i(tag, "Flushed $irSize remaining PPG IR data points")
+        }
+        val redSize = ppgRedRecording.getSize() ?: 0
+        if (redSize > 0) {
+            sendPpgData(ppgRedRecording, redSize)
+            ppgRedRecording.clearFromStartUntil(redSize)
+            Log.i(tag, "Flushed $redSize remaining PPG Red data points")
+        }
     }
 
 //    private fun sendPpgData(ppgData: PpgData) {

@@ -7,6 +7,12 @@
         android:title="@string/pause_item"
         app:showAsAction="ifRoom" />
     <item
+        android:id="@+id/stop_recording"
+        android:icon="@drawable/ic_stop_white_36dp"
+        android:title="@string/stop_recording_item"
+        android:visible="false"
+        app:showAsAction="ifRoom" />
+    <item
         android:id="@+id/save"
         android:title="@string/save_item">
         <menu>

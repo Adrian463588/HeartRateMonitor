@@ -29,4 +29,12 @@ object ActivityCode {
      * after receiving the message
      */
     const val STOP_ACTIVITY = 2
+
+    /**
+     * Use this code to tell the receiver
+     * that they need to pause current action(s)
+     * after receiving the message.
+     * Resume is done by sending START_ACTIVITY again.
+     */
+    const val PAUSE_ACTIVITY = 3
 }
