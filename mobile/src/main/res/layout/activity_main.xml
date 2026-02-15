@@ -167,17 +167,18 @@
                     app:graphMarginTop="10dp"
                     app:gridBackgroundColor="@color/white"
 
+                    app:layout_constraintBottom_toBottomOf="parent"
+                    app:layout_constraintHorizontal_bias="1.0"
                     app:layout_constraintLeft_toLeftOf="parent"
                     app:layout_constraintRight_toRightOf="parent"
                     app:layout_constraintTop_toBottomOf="@id/ppg_ir_plot"
-                    app:layout_constraintBottom_toBottomOf="parent"
                     app:lineLabelInsetLeft="15dp"
                     app:renderMode="use_background_thread"
                     app:title="@string/ppg_red_plot_title"
                     app:titleTextColor="#000000"
                     app:titleTextSize="15dp" />
 
-<!--                <Button-->
+                <!--                <Button-->
 <!--                    android:id="@+id/button_ppg_green"-->
 <!--                    android:layout_width="75dp"-->
 <!--                    android:layout_height="75dp"-->

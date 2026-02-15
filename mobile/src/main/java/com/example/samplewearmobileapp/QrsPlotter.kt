@@ -5,7 +5,7 @@ import android.util.Log
 import android.view.View
 import com.androidplot.util.PixelUtils
 import com.androidplot.xy.*
-import com.example.samplewearmobileapp.Constants.NANO_TO_MICRO_SEC
+import com.example.samplewearmobileapp.utils.TimestampHelper
 import com.example.samplewearmobileapp.Constants.N_DOMAIN_LARGE_BOXES
 import com.example.samplewearmobileapp.Constants.N_ECG_PLOT_POINTS
 import com.example.samplewearmobileapp.Constants.N_LARGE
@@ -248,7 +248,7 @@ class QrsPlotter: PlotterListener {
         }
         if (timestamp != null) {
             seriesTimestamp.addLast(dataIndex,
-                (NANO_TO_MICRO_SEC * timestamp).toLong().adjustEpoch())
+                TimestampHelper.polarNanosToUnixMillis(timestamp))
         }
         dataIndex++
         // Reset the domain boundaries
@@ -360,9 +360,5 @@ class QrsPlotter: PlotterListener {
 
     companion object {
         private const val TAG = "QrsPlotter"
-
-        private fun Long.adjustEpoch(): Long {
-            return this + Date(2000 - 1900, 0, 1).time
-        }
     }
 }

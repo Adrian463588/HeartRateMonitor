@@ -2334,8 +2334,14 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
                 }
                 MessagePath.INFO -> {
                     when (it.code) {
-                        ActivityCode.START_ACTIVITY -> { // get Wear's current state
+                        ActivityCode.START_ACTIVITY -> { // Wear is running
                             toggleState(1)
+                        }
+                        ActivityCode.STOP_ACTIVITY -> { // Wear stopped
+                            toggleState(0)
+                        }
+                        ActivityCode.PAUSE_ACTIVITY -> { // Wear paused
+                            toggleState(ActivityCode.PAUSE_ACTIVITY)
                         }
                         ActivityCode.DO_NOTHING -> {
                             toggleState(0)
@@ -2474,17 +2480,34 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
         else if (appState == 1) {
             appState = 0
         }
-//        runOnUiThread {
-//            if (appState == 0) {
-//                buttonMain.text = getString(R.string.button_start)
-//                textWearStatus.text = getString(R.string.status_stopped)
-//            }
-//            if (appState == 1) {
-//                buttonMain.text = getString(R.string.button_stop)
-//                textWearStatus.text = getString(R.string.status_running)
-//            }
-//            textTooltip.text = appState.toString()
-//        }
+        runOnUiThread {
+            when (appState) {
+                0, ActivityCode.STOP_ACTIVITY -> {
+                    textPpgGreenStatus.text = getString(R.string.ppg_green_status,
+                        getString(R.string.status_stopped))
+                    textPpgIrStatus.text = getString(R.string.ppg_ir_status,
+                        getString(R.string.status_stopped))
+                    textPpgRedStatus.text = getString(R.string.ppg_red_status,
+                        getString(R.string.status_stopped))
+                }
+                1 -> {
+                    textPpgGreenStatus.text = getString(R.string.ppg_green_status,
+                        getString(R.string.status_running))
+                    textPpgIrStatus.text = getString(R.string.ppg_ir_status,
+                        getString(R.string.status_running))
+                    textPpgRedStatus.text = getString(R.string.ppg_red_status,
+                        getString(R.string.status_running))
+                }
+                ActivityCode.PAUSE_ACTIVITY -> {
+                    textPpgGreenStatus.text = getString(R.string.ppg_green_status,
+                        getString(R.string.status_paused))
+                    textPpgIrStatus.text = getString(R.string.ppg_ir_status,
+                        getString(R.string.status_paused))
+                    textPpgRedStatus.text = getString(R.string.ppg_red_status,
+                        getString(R.string.status_paused))
+                }
+            }
+        }
         Log.d(TAG,"stateNum changed to: $appState")
     }
 
