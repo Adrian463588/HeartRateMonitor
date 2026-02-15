@@ -35,6 +35,7 @@
 
     <string name="status_running">Running</string>
     <string name="status_stopped">Stopped</string>
+    <string name="status_paused">Paused</string>
     <string name="status_ok">OK</string>
     <string name="status_measuring">Measuring</string>
     <string name="status_finished">Finished</string>
