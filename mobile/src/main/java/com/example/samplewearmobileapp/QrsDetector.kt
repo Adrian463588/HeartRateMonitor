@@ -54,12 +54,16 @@ class QrsDetector(activity: MainActivity) {
     private val movingAverageRr: RunningAverage = RunningAverage(MOV_AVG_HR_WINDOW)
 
     fun process(polarEcgData: PolarEcgData) {
-        // Update the ECG plot
+        // Update the ECG plot (this also computes normalized timestamps)
         ecgPlotter()?.addValues(polarEcgData)
 
+        // Retrieve the timestamps computed by EcgPlotter for this batch
+        val batchTimestamps = ecgPlotter()?.getLastBatchTimestamps()
+            ?: LongArray(polarEcgData.samples.size)
+
         // samples contains the ecgValues values in μV, mv = .001 * μV;
-        for (ecgDataSample in polarEcgData.samples) {
-            detectQrs(ecgDataSample)
+        for ((idx, ecgDataSample) in polarEcgData.samples.withIndex()) {
+            detectQrs(ecgDataSample, batchTimestamps[idx])
         }
     }
 
@@ -68,7 +72,7 @@ class QrsDetector(activity: MainActivity) {
      *
      * @param ecgDataSample The value to process.
      */
-    private fun detectQrs(ecgDataSample: PolarEcgData.PolarEcgDataSample) {
+    private fun detectQrs(ecgDataSample: PolarEcgData.PolarEcgDataSample, normalizedTimestamp: Long) {
         val ecg = MICRO_TO_MILLI_VOLT * ecgDataSample.voltage
         // Record the start time as now.
         if (java.lang.Double.isNaN(startTime)) startTime = Date().time.toDouble()
@@ -236,7 +240,7 @@ class QrsDetector(activity: MainActivity) {
             ecg,
             scaleFactor * cursorDerivative.last,
             scaleFactor * cursorScore.last,
-            ecgDataSample.timeStamp
+            normalizedTimestamp
         )
     }
 

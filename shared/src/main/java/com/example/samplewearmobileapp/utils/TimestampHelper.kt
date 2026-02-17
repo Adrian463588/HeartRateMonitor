@@ -48,6 +48,92 @@ object TimestampHelper {
         return millisSince2000 + POLAR_EPOCH_OFFSET_MS
     }
 
+    // --- Phone-Clock ECG Timestamp Generator ---
+    // Bypasses unreliable Polar device timestamps entirely.
+    // Uses the phone's wall clock (same time domain as PPG)
+    // with Polar's precise sample rate for inter-sample intervals.
+
+    /** Phone wall clock time when ECG streaming started */
+    private var ecgStreamStartMs: Long = 0L
+    /** Running sample counter since stream start */
+    private var ecgSampleIndex: Long = 0L
+    private var isEcgStreamStarted = false
+
+    /**
+     * Resets the ECG timestamp state so the phone-clock anchor
+     * will be captured lazily when the first ECG sample actually arrives
+     * (unless [setEcgAnchor] was called to pre-set the anchor).
+     * Call this when ECG streaming is about to begin (before the async setup).
+     */
+    fun resetEcgTimestamps() {
+        ecgSampleIndex = 0L
+        isEcgStreamStarted = false
+        // Don't clear ecgStreamStartMs — it may have been pre-set by setEcgAnchor()
+        logger.info("ECG timestamps reset; anchor will be set on first sample arrival")
+    }
+
+    /**
+     * Pre-sets the ECG anchor to a specific wall-clock time.
+     * Use this to pin ECG T0 to the recording start moment,
+     * so ECG and PPG timestamps share the same reference point.
+     *
+     * Must be called **before** [resetEcgTimestamps] or [nextEcgTimestamp].
+     *
+     * @param anchorMs Unix epoch millis to use as ECG T0 (e.g. `startTime.time`).
+     */
+    fun setEcgAnchor(anchorMs: Long) {
+        ecgStreamStartMs = anchorMs
+        ecgSampleIndex = 0L
+        isEcgStreamStarted = false
+        logger.info("ECG anchor pre-set to $anchorMs (recording start time)")
+    }
+
+    /**
+     * Returns the next ECG sample timestamp in Unix epoch millis,
+     * computed from the phone's wall clock + sample index.
+     *
+     * Formula: `startTime + (sampleIndex × 1000 / sampleRate)`
+     *
+     * This guarantees timestamps are in the same time domain as PPG
+     * (phone wall clock) while preserving precise inter-sample intervals.
+     *
+     * @param sampleRateHz The ECG sample rate (e.g. 130.0 for Polar H10).
+     * @return Timestamp in Unix epoch milliseconds.
+     */
+    fun nextEcgTimestamp(sampleRateHz: Double): Long {
+        if (!isEcgStreamStarted) {
+            if (ecgStreamStartMs == 0L) {
+                // No pre-set anchor — fall back to current phone time
+                ecgStreamStartMs = System.currentTimeMillis()
+                logger.info("ECG phone-clock anchor set at $ecgStreamStartMs (first sample arrival, no pre-set anchor)")
+            } else {
+                logger.info("ECG streaming started with pre-set anchor at $ecgStreamStartMs")
+            }
+            ecgSampleIndex = 0L
+            isEcgStreamStarted = true
+        }
+        val ts = ecgStreamStartMs + (ecgSampleIndex * 1000.0 / sampleRateHz).toLong()
+        ecgSampleIndex++
+        return ts
+    }
+
+    /**
+     * @deprecated Use [nextEcgTimestamp] instead.
+     * Kept for backward compatibility.
+     */
+    fun resetAnchor() {
+        resetEcgTimestamps()
+    }
+
+    /**
+     * @deprecated Use [nextEcgTimestamp] instead.
+     * Kept for backward compatibility.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    fun polarNanosToAnchoredUnixMillis(polarNanos: Long): Long {
+        return nextEcgTimestamp(130.0)
+    }
+
     /**
      * Validates and optionally corrects a signal timestamp against a session
      * start time. Detects two failure modes:
