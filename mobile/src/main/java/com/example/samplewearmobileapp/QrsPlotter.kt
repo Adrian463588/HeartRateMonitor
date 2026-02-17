@@ -5,7 +5,7 @@ import android.util.Log
 import android.view.View
 import com.androidplot.util.PixelUtils
 import com.androidplot.xy.*
-import com.example.samplewearmobileapp.utils.TimestampHelper
+import com.example.samplewearmobileapp.Constants.ECG_SAMPLE_RATE
 import com.example.samplewearmobileapp.Constants.N_DOMAIN_LARGE_BOXES
 import com.example.samplewearmobileapp.Constants.N_ECG_PLOT_POINTS
 import com.example.samplewearmobileapp.Constants.N_LARGE
@@ -247,8 +247,7 @@ class QrsPlotter: PlotterListener {
             seriesDataScores.addLast(dataIndex, score)
         }
         if (timestamp != null) {
-            seriesTimestamp.addLast(dataIndex,
-                TimestampHelper.polarNanosToUnixMillis(timestamp))
+            seriesTimestamp.addLast(dataIndex, timestamp)
         }
         dataIndex++
         // Reset the domain boundaries

@@ -26,6 +26,7 @@
     <string name="status_disconnected">Disconnected</string>
     <string name="status_running">Running</string>
     <string name="status_stopped">Stopped</string>
+    <string name="status_measuring">Measuring</string>
     <string name="status_paused">Paused</string>
     <string name="status_no_support">Not supported</string>
 

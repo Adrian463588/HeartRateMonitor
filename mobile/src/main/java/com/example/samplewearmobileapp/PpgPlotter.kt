@@ -303,6 +303,8 @@ class PpgPlotter: PlotterListener {
         dataIndex = 0
         seriesVisible.clear()
         seriesAll.clear()
+        seriesTimestamp.clear()
+        runningMax = RunningMax(visiblePointLimit)
         update()
     }
 

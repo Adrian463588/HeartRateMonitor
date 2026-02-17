@@ -48,6 +48,7 @@ import com.example.samplewearmobileapp.databinding.ActivityMainBinding
 import com.example.samplewearmobileapp.models.*
 import com.example.samplewearmobileapp.models.Message
 import com.example.samplewearmobileapp.utils.AppUtils
+import com.example.samplewearmobileapp.utils.TimestampHelper
 import com.example.samplewearmobileapp.utils.UriUtils
 import com.google.android.gms.common.api.GoogleApiClient
 import com.google.android.gms.wearable.DataEvent
@@ -120,6 +121,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
     private var elapsedSeconds: Long = 0L
     private var timerJob: Job? = null
     private var isPolarDeviceConnected = false
+    private var isRestartingPolar = false
     private var isEcgRunning = false
     private var isPpgGreenRunning = false
     private var isPpgIrRunning = false
@@ -500,6 +502,9 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
                 setLastHr()
                 startTime = Date()
                 stopTime = Date()
+                // Pin ECG T0 to recording start so ECG and PPG timestamps
+                // share the same wall-clock reference point
+                TimestampHelper.setEcgAnchor(startTime!!.time)
                 isRecording = true
                 isPaused = false
                 elapsedSeconds = 0L
@@ -675,6 +680,15 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
             toggleEcgStream()
             isEcgRunning = false
         }
+        // Update PPG status to Paused
+        runOnUiThread {
+            textPpgGreenStatus.text = getString(R.string.ppg_green_status,
+                getString(R.string.status_paused))
+            textPpgIrStatus.text = getString(R.string.ppg_ir_status,
+                getString(R.string.status_paused))
+            textPpgRedStatus.text = getString(R.string.ppg_red_status,
+                getString(R.string.status_paused))
+        }
         Log.i(TAG, "Recording paused at ${elapsedSeconds}s")
     }
 
@@ -730,27 +744,13 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
     }
 
     private fun invalidatePpgState() {
-        if (!isPpgGreenRunning
-            && !isPpgIrRunning
-            && !isPpgRedRunning
-        ) {
-            runOnUiThread {
-                textPpgGreenStatus.text = getString(R.string.ppg_green_status,
-                    getString(R.string.status_stopped))
-                textPpgIrStatus.text = getString(R.string.ppg_ir_status,
-                    getString(R.string.status_stopped))
-                textPpgRedStatus.text = getString(R.string.ppg_red_status,
-                    getString(R.string.status_stopped))
-            }
-        } else {
-            runOnUiThread {
-                textPpgGreenStatus.text = getString(R.string.ppg_green_status,
-                    getString(R.string.status_running))
-                textPpgIrStatus.text = getString(R.string.ppg_ir_status,
-                    getString(R.string.status_running))
-                textPpgRedStatus.text = getString(R.string.ppg_red_status,
-                    getString(R.string.status_running))
-            }
+        runOnUiThread {
+            textPpgGreenStatus.text = getString(R.string.ppg_green_status,
+                getString(if (isPpgGreenRunning) R.string.status_running else R.string.status_stopped))
+            textPpgIrStatus.text = getString(R.string.ppg_ir_status,
+                getString(if (isPpgIrRunning) R.string.status_running else R.string.status_stopped))
+            textPpgRedStatus.text = getString(R.string.ppg_red_status,
+                getString(if (isPpgRedRunning) R.string.status_running else R.string.status_stopped))
         }
     }
 
@@ -889,7 +889,56 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
      */
     private fun restartPolarApi() {
         Log.d(TAG, this.javaClass.simpleName + " restartApi:")
-        resetDeviceId(deviceId)
+        // Debounce: prevent rapid taps
+        if (isRestartingPolar) {
+            Log.w(TAG, "Polar API restart already in progress, ignoring")
+            return
+        }
+        isRestartingPolar = true
+
+        // Step 1: Reset state flags
+        isPolarDeviceConnected = false
+        isEcgRunning = false
+
+        // Step 2: Dispose ECG stream
+        if (ecgDisposable != null) {
+            ecgDisposable!!.dispose()
+            ecgDisposable = null
+        }
+
+        // Step 3: Disconnect + Shutdown old API
+        if (polarApi != null) {
+            try {
+                polarApi!!.disconnectFromDevice(deviceId)
+            } catch (ex: Exception) {
+                Log.e(TAG, "restartPolarApi: disconnect error", ex)
+            }
+            polarApi!!.shutDown()
+            polarApi = null
+        }
+        qrsDetector = null
+
+        runOnUiThread {
+            textEcgStatus.text = getString(R.string.ecg_status,
+                getString(R.string.status_connecting))
+        }
+
+        // Step 4: Wait 3s for BLE stack to fully release, then re-init + connect
+        lifecycleScope.launch {
+            delay(3000)
+            try {
+                setupPolar()
+                connectPolarDevice()
+            } catch (ex: Exception) {
+                Log.e(TAG, "Error reconnecting after Polar API restart", ex)
+                runOnUiThread {
+                    AppUtils.excMsg(this@MainActivity,
+                        "Error reconnecting Polar API", ex)
+                }
+            } finally {
+                isRestartingPolar = false
+            }
+        }
     }
 
     /**
@@ -1352,12 +1401,37 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
     }
 
     private fun redoPlotSetup() {
-        ppgGreenPlotter?.setupPlot()
-        ppgIrPlotter?.setupPlot()
-        ppgRedPlotter?.setupPlot()
-        ecgPlotter?.setupPlot()
-        qrsPlotter?.setupPlot()
-        hrPlotter?.setupPlot()
+        // Clear old data
+        ppgGreenPlotter?.clear()
+        ppgIrPlotter?.clear()
+        ppgRedPlotter?.clear()
+        ecgPlotter?.clear()
+        qrsPlotter?.clear()
+        hrPlotter?.clear()
+        // Reset counters
+        ppgGreenValueNumber = 0
+        ppgIrValueNumber = 0
+        ppgRedValueNumber = 0
+        // Force layout recalculation so gridRect is available for setupPlot
+        ppgGreenPlot.invalidate()
+        ppgIrPlot.invalidate()
+        ppgRedPlot.invalidate()
+        ecgPlot.invalidate()
+        qrsPlot.invalidate()
+        hrPlot.invalidate()
+        ppgGreenPlot.requestLayout()
+        ecgPlot.requestLayout()
+        qrsPlot.requestLayout()
+        hrPlot.requestLayout()
+        // Post setupPlot after layout pass completes
+        ppgGreenPlot.post {
+            ppgGreenPlotter?.setupPlot()
+            ppgIrPlotter?.setupPlot()
+            ppgRedPlotter?.setupPlot()
+            ecgPlotter?.setupPlot()
+            qrsPlotter?.setupPlot()
+            hrPlotter?.setupPlot()
+        }
     }
 
     private fun setPlotVisibility() {
@@ -2175,12 +2249,13 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
         }
         logEpochInfo("UTC")
         if (ecgDisposable == null) {
+            // Reset ECG timestamps; anchor will be set on first data arrival
+            TimestampHelper.resetEcgTimestamps()
             // Set the local time to get correct timestamps. Polar H10 apparently
             // resets its time to 01:01:2019 00:00:00 when connected to strap
             val timeZone = TimeZone.getTimeZone("UTC")
             val calNow = Calendar.getInstance(timeZone)
             Log.d(TAG, "setLocalTime to " + calNow.time)
-            polarApi!!.setLocalTime(deviceId, calNow)
             ecgDisposable = polarApi!!.setLocalTime(deviceId, calNow)
                 .andThen(
                     polarApi!!.requestStreamSettings(
@@ -2271,7 +2346,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
                 // Update the status (elapsed time is handled by the coroutine timer)
                 runOnUiThread {
                     textPpgGreenStatus.text = getString(R.string.ppg_green_status,
-                        ppgGreenValueNumber.toString())
+                        getString(R.string.status_measuring))
                 }
             }
             MessagePath.DATA_PPG_IR -> {
@@ -2292,7 +2367,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
                 // Update the status (elapsed time is handled by the coroutine timer)
                 runOnUiThread {
                     textPpgIrStatus.text = getString(R.string.ppg_ir_status,
-                        ppgIrValueNumber.toString())
+                        getString(R.string.status_measuring))
                 }
             }
             MessagePath.DATA_PPG_RED -> {
@@ -2315,7 +2390,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
                 // Update the status (elapsed time is handled by the coroutine timer)
                 runOnUiThread {
                     textPpgRedStatus.text = getString(R.string.ppg_red_status,
-                        ppgRedValueNumber.toString())
+                        getString(R.string.status_measuring))
                 }
             }
         }
