@@ -16,7 +16,13 @@
     </style>
 
     <style name="InverseTheme" parent="Theme.AppCompat.Light.Dialog.Alert">
-        <item name="colorPrimary">@color/white</item>
+        <item name="colorPrimary">@color/clinical_primary</item>
         <item name="colorAccent">@color/clinical_primary</item>
+        <item name="buttonBarPositiveButtonStyle">@style/DialogButtonStyle</item>
+        <item name="buttonBarNegativeButtonStyle">@style/DialogButtonStyle</item>
+    </style>
+
+    <style name="DialogButtonStyle" parent="Widget.AppCompat.Button.ButtonBar.AlertDialog">
+        <item name="android:textColor">@color/clinical_primary</item>
     </style>
 </resources>

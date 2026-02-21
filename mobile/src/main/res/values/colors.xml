@@ -28,4 +28,5 @@
     <!-- Surface Colors -->
     <color name="surface_light">#FFFAFAFA</color>
     <color name="card_surface_light">#FFFFFFFF</color>
+    <color name="clinical_surface">#FFF0F4FA</color>
 </resources>

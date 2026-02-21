@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HeartRate Monitor — Researcher Guide</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            line-height: 1.6; color: #1a1a2e; background: #f8f9fc;
+            padding: 16px; font-size: 15px;
+        }
+        h1 { font-size: 22px; color: #1565C0; margin-bottom: 16px; border-bottom: 2px solid #1565C0; padding-bottom: 8px; }
+        h2 { font-size: 18px; color: #0D47A1; margin: 20px 0 10px; }
+        h3 { font-size: 15px; color: #1B7A2B; margin: 14px 0 6px; }
+        p, li { margin-bottom: 6px; }
+        ul { padding-left: 20px; }
+        .card {
+            background: #fff; border-radius: 10px; padding: 14px;
+            margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+            border-left: 3px solid #1565C0;
+        }
+        .warn { border-left-color: #F9A825; }
+        .err { border-left-color: #BA1A1A; }
+        .ok { border-left-color: #1B7A2B; }
+        table { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 13px; }
+        th, td { padding: 8px 10px; text-align: left; border-bottom: 1px solid #e0e0e0; }
+        th { background: #e3f2fd; color: #0D47A1; font-weight: 600; }
+        code { background: #e8eaf6; padding: 2px 6px; border-radius: 4px; font-size: 13px; }
+    </style>
+</head>
+<body>
+    <h1>🫀 HeartRate Monitor — Researcher Guide</h1>
+
+    <h2>1. System Overview</h2>
+    <div class="card">
+        <p>This app collects physiological data from two sensor nodes for stress detection research:</p>
+        <ul>
+            <li><strong>Node A — Polar H10:</strong> ECG data via BLE (sampling rate: 130 Hz)</li>
+            <li><strong>Node B — Galaxy Watch 5:</strong> PPG data via Samsung Health SDK (Green, IR, Red channels at 25 Hz)</li>
+        </ul>
+        <p>Data is saved as CSV files for offline analysis in Python/MATLAB.</p>
+    </div>
+
+    <h2>2. Device Setup</h2>
+    <h3>Polar H10 Chest Strap</h3>
+    <div class="card ok">
+        <ul>
+            <li>Moisten electrode pads with water or electrode gel</li>
+            <li>Position strap just below the chest muscles</li>
+            <li>Ensure snug fit — too loose causes motion artifacts</li>
+            <li>Set the Device ID in <code>Menu → Set Device ID</code> (format: <code>A1B2C3D4</code>)</li>
+            <li>The LED should blink once paired</li>
+        </ul>
+    </div>
+
+    <h3>Galaxy Watch 5 (PPG)</h3>
+    <div class="card ok">
+        <ul>
+            <li>Wear the watch 2 cm above the wrist bone</li>
+            <li>Tighten strap so there is no gap with the skin</li>
+            <li>Avoid placing over tattoos or thick body hair</li>
+            <li>Launch the wear app <strong>before</strong> starting recording on the phone</li>
+            <li>Uses Samsung Health SDK <code>priv-health-tracking-v.1.2.0.aar</code></li>
+        </ul>
+    </div>
+
+    <h2>3. Recording Protocol</h2>
+    <div class="card">
+        <ol>
+            <li>Set the Polar Device ID in <code>Settings → Device ID</code></li>
+            <li>Set the data directory via <code>Menu → Set Data Directory</code></li>
+            <li>Wait for <strong>"Connected"</strong> status on the ECG sensor card</li>
+            <li>Confirm PPG cards show <strong>"Connected"</strong> or <strong>"Streaming"</strong></li>
+            <li>Press the <strong>Record button</strong> (red pulsating FAB)</li>
+            <li>Use the <strong>Flag button</strong> to mark events (Stress, Rest, Task Start, Task End)</li>
+            <li>Press <strong>Pause</strong> during breaks if needed</li>
+            <li>Press <strong>Stop → Save All Data</strong> when finished</li>
+        </ol>
+    </div>
+
+    <h2>4. Data File Format</h2>
+    <table>
+        <tr><th>File Type</th><th>Columns</th><th>Sample Rate</th></tr>
+        <tr><td>ECG</td><td>timestamp_ms, voltage_mV</td><td>130 Hz</td></tr>
+        <tr><td>PPG Green</td><td>timestamp_ms, ppg_value</td><td>25 Hz</td></tr>
+        <tr><td>PPG IR</td><td>timestamp_ms, ppg_value</td><td>25 Hz</td></tr>
+        <tr><td>PPG Red</td><td>timestamp_ms, ppg_value</td><td>25 Hz</td></tr>
+    </table>
+    <div class="card">
+        <p><strong>File naming:</strong> <code>[type]_[YYYY-MM-DD_HHmmss].csv</code></p>
+        <p>Example: <code>ECG_2026-02-21_143025.csv</code></p>
+        <p>Default directory: <code>Documents/HeartMonitor/</code></p>
+    </div>
+
+    <h2>5. Troubleshooting</h2>
+    <h3>ECG shows flat line</h3>
+    <div class="card err">
+        <ul>
+            <li>Check if the Polar strap electrode pads are moist</li>
+            <li>Ensure skin contact is firm and continuous</li>
+            <li>Try <code>Menu → Restart Polar API</code></li>
+            <li>If still flat, re-wear the strap with fresh moisture</li>
+        </ul>
+    </div>
+
+    <h3>PPG data missing or not streaming</h3>
+    <div class="card warn">
+        <ul>
+            <li>Verify the watch app is open and running</li>
+            <li>Tap the PPG sensor card on the dashboard to toggle the tracker</li>
+            <li>Check that PPG cards show "Streaming"</li>
+            <li>Restart the watch app if status shows "Disconnected"</li>
+            <li>Ensure watch strap is tight against the skin</li>
+        </ul>
+    </div>
+
+    <h3>App unresponsive / freezing</h3>
+    <div class="card warn">
+        <ul>
+            <li>Wait 5 seconds — the app may be processing a large batch of data</li>
+            <li>If frozen, press Stop to save current data</li>
+            <li>Use <code>Menu → Redo Plot Setup</code> to reset graphs</li>
+        </ul>
+    </div>
+
+    <h3>Recording stops unexpectedly</h3>
+    <div class="card err">
+        <ul>
+            <li>Ensure battery saver is <strong>OFF</strong> on the phone</li>
+            <li>Disable battery optimization for this app in Android Settings</li>
+            <li>Keep the phone plugged in for long recording sessions (&gt; 1 hour)</li>
+        </ul>
+    </div>
+
+    <h2>6. Best Practices for Data Quality</h2>
+    <div class="card ok">
+        <ul>
+            <li>Do a 2-minute <strong>baseline recording</strong> at rest before each session</li>
+            <li>Mark events immediately using the Flag button</li>
+            <li>Keep subjects seated and still to minimize motion artifacts</li>
+            <li>Verify data after each session by checking the CSV file row counts</li>
+            <li>Back up data after each recording session</li>
+        </ul>
+    </div>
+
+    <p style="text-align:center; color:#999; margin-top:24px; font-size:12px;">
+        HeartRate Monitor v4.1 — Stress Detection Research Tool<br>
+        Samsung Health SDK: priv-health-tracking-v.1.2.0
+    </p>
+</body>
+</html>

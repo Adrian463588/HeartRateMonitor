@@ -4,6 +4,7 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
@@ -49,6 +50,7 @@ fun SensorStatusCard(
     sampleCount: Long = 0,
     icon: ImageVector = Icons.Default.Sensors,
     accentColor: Color = MaterialTheme.colorScheme.primary,
+    onClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val isDark = !MaterialTheme.colorScheme.background.luminance().let { it > 0.5f }
@@ -87,7 +89,9 @@ fun SensorStatusCard(
     }
 
     Card(
-        modifier = modifier.width(160.dp),
+        modifier = modifier
+            .width(160.dp)
+            .clickable { onClick() },
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
         ),
