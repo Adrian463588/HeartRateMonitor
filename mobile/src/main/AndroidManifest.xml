@@ -5,7 +5,12 @@
 
     <uses-feature android:name="android.hardware.bluetooth" android:required="true"/>
 
+    <!-- Foreground Service permissions -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE"/>
+
+    <!-- Android 13+ notification permission -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
 
     <!-- Request legacy Bluetooth permissions on older devices. -->
     <uses-permission android:name="android.permission.BLUETOOTH"
@@ -13,27 +18,23 @@
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN"
         android:maxSdkVersion="30" />
 
-    <!-- Needed only if your app looks for Bluetooth devices.
-         If your app doesn't use Bluetooth scan results to derive physical
-         location information, you can strongly assert that your app
-         doesn't derive physical location. -->
+    <!-- Needed for BLE scanning. -->
     <uses-permission android:name="android.permission.BLUETOOTH_SCAN"
         android:usesPermissionFlags="neverForLocation" />
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
 
-    <!-- Needed only if your app makes the device discoverable to Bluetooth
-         devices. -->
-<!--    <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" />-->
-
-    <!-- Needed only if your app communicates with already-paired Bluetooth
-         devices. -->
+    <!-- Needed for BLE connections. -->
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
 
-    <!-- Needed only if your app uses Bluetooth scan results to derive physical location. -->
+    <!-- Needed for BLE scanning on Android 11 and below. -->
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
 
+    <!-- Body sensor access for physiological data -->
+    <uses-permission android:name="android.permission.BODY_SENSORS"/>
+
     <application
+        android:name=".HeartMonitorApp"
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
@@ -42,13 +43,12 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.SampleWearMobileApp"
-        tools:targetApi="33">
+        tools:targetApi="34">
         <activity
             android:name=".MainActivity"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
-
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
@@ -56,13 +56,6 @@
                 android:name="android.app.lib_name"
                 android:value="" />
         </activity>
-<!--        <activity-->
-<!--            android:name=".ConnectHrmActivity"-->
-<!--            android:exported="false" >-->
-<!--            <meta-data-->
-<!--                android:name="android.app.lib_name"-->
-<!--                android:value="" />-->
-<!--        </activity>-->
         <activity
             android:name=".SettingsActivity"
             android:label="@string/settings_title"
@@ -71,6 +64,13 @@
                 android:name="android.app.lib_name"
                 android:value="" />
         </activity>
+
+        <!-- Foreground Service for keeping BLE + data pipeline alive -->
+        <service
+            android:name=".MobileService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="connectedDevice" />
     </application>
 
 </manifest>

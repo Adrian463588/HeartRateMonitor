@@ -1,0 +1,41 @@
+﻿> Task :mobile:clean
+> Task :shared:clean
+> Task :wear:clean
+> Task :mobile:preBuild UP-TO-DATE
+> Task :mobile:preDebugBuild UP-TO-DATE
+> Task :mobile:mergeDebugNativeDebugMetadata NO-SOURCE
+> Task :shared:checkKotlinGradlePluginConfigurationErrors
+> Task :shared:processResources NO-SOURCE
+> Task :mobile:checkKotlinGradlePluginConfigurationErrors
+> Task :shared:compileKotlin
+> Task :shared:compileJava NO-SOURCE
+> Task :mobile:dataBindingMergeDependencyArtifactsDebug
+> Task :shared:classes UP-TO-DATE
+> Task :shared:jar
+> Task :mobile:generateDebugResValues
+> Task :mobile:generateDebugResources
+> Task :mobile:packageDebugResources
+> Task :mobile:mergeDebugResources
+> Task :mobile:parseDebugLocalResources
+> Task :mobile:checkDebugAarMetadata
+> Task :mobile:dataBindingGenBaseClassesDebug
+> Task :mobile:mapDebugSourceSetPaths
+> Task :mobile:createDebugCompatibleScreenManifests
+> Task :mobile:extractDeepLinksDebug
+
+> Task :mobile:processDebugMainManifest
+package="com.example.samplewearmobileapp" found in source AndroidManifest.xml: D:\SEMESTER12\SkripiDump\4_HeartMonitor\mobile\src\main\AndroidManifest.xml.
+Setting the namespace via the package attribute in the source AndroidManifest.xml is no longer supported, and the value is ignored.
+Recommendation: remove package="com.example.samplewearmobileapp" from the source AndroidManifest.xml: D:\SEMESTER12\SkripiDump\4_HeartMonitor\mobile\src\main\AndroidManifest.xml.
+
+> Task :mobile:processDebugManifest
+> Task :mobile:javaPreCompileDebug
+> Task :mobile:mergeDebugShaders
+> Task :mobile:compileDebugShaders NO-SOURCE
+> Task :mobile:generateDebugAssets UP-TO-DATE
+> Task :mobile:mergeDebugAssets
+> Task :mobile:compressDebugAssets
+> Task :mobile:desugarDebugFileDependencies
+> Task :mobile:mergeDebugJniLibFolders
+> Task :mobile:checkDebugDuplicateClasses
+> Task :mobile:mergeDebugNativeLibs NO-SOURCE

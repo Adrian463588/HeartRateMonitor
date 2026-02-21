@@ -1,0 +1,157 @@
+﻿> Task :mobile:clean
+> Task :shared:clean
+> Task :wear:clean
+> Task :mobile:preBuild UP-TO-DATE
+> Task :mobile:preDebugBuild UP-TO-DATE
+> Task :mobile:mergeDebugNativeDebugMetadata NO-SOURCE
+> Task :shared:checkKotlinGradlePluginConfigurationErrors
+> Task :shared:processResources NO-SOURCE
+> Task :mobile:checkKotlinGradlePluginConfigurationErrors
+> Task :mobile:dataBindingMergeDependencyArtifactsDebug
+> Task :mobile:generateDebugResValues
+> Task :mobile:generateDebugResources
+> Task :shared:compileKotlin
+> Task :shared:compileJava NO-SOURCE
+> Task :shared:classes UP-TO-DATE
+> Task :shared:jar
+> Task :mobile:packageDebugResources
+> Task :mobile:mapDebugSourceSetPaths
+> Task :mobile:checkDebugAarMetadata
+> Task :mobile:createDebugCompatibleScreenManifests
+> Task :mobile:extractDeepLinksDebug
+> Task :mobile:parseDebugLocalResources
+
+> Task :mobile:processDebugMainManifest
+package="com.example.samplewearmobileapp" found in source AndroidManifest.xml: D:\SEMESTER12\SkripiDump\4_HeartMonitor\mobile\src\main\AndroidManifest.xml.
+Setting the namespace via the package attribute in the source AndroidManifest.xml is no longer supported, and the value is ignored.
+Recommendation: remove package="com.example.samplewearmobileapp" from the source AndroidManifest.xml: D:\SEMESTER12\SkripiDump\4_HeartMonitor\mobile\src\main\AndroidManifest.xml.
+
+> Task :mobile:mergeDebugResources
+> Task :mobile:processDebugManifest
+> Task :mobile:dataBindingGenBaseClassesDebug
+> Task :mobile:mergeDebugShaders
+> Task :mobile:compileDebugShaders NO-SOURCE
+> Task :mobile:generateDebugAssets UP-TO-DATE
+> Task :mobile:javaPreCompileDebug
+> Task :mobile:mergeDebugAssets
+> Task :mobile:compressDebugAssets
+> Task :mobile:desugarDebugFileDependencies
+> Task :mobile:mergeDebugJniLibFolders
+> Task :mobile:mergeDebugNativeLibs NO-SOURCE
+> Task :mobile:stripDebugDebugSymbols NO-SOURCE
+> Task :mobile:validateSigningDebug
+> Task :mobile:writeDebugAppMetadata
+> Task :mobile:checkDebugDuplicateClasses
+> Task :mobile:writeDebugSigningConfigVersions
+> Task :wear:preBuild UP-TO-DATE
+> Task :wear:preDebugBuild UP-TO-DATE
+> Task :wear:mergeDebugNativeDebugMetadata NO-SOURCE
+> Task :wear:checkKotlinGradlePluginConfigurationErrors
+> Task :mobile:mergeLibDexDebug
+> Task :wear:dataBindingMergeDependencyArtifactsDebug
+> Task :wear:generateDebugResValues
+> Task :wear:generateDebugResources
+> Task :wear:packageDebugResources
+> Task :wear:checkDebugAarMetadata
+> Task :wear:mapDebugSourceSetPaths
+> Task :wear:parseDebugLocalResources
+> Task :wear:createDebugCompatibleScreenManifests
+> Task :wear:extractDeepLinksDebug
+> Task :wear:mergeDebugResources
+
+> Task :wear:processDebugMainManifest
+package="com.example.samplewearmobileapp" found in source AndroidManifest.xml: D:\SEMESTER12\SkripiDump\4_HeartMonitor\wear\src\main\AndroidManifest.xml.
+Setting the namespace via the package attribute in the source AndroidManifest.xml is no longer supported, and the value is ignored.
+Recommendation: remove package="com.example.samplewearmobileapp" from the source AndroidManifest.xml: D:\SEMESTER12\SkripiDump\4_HeartMonitor\wear\src\main\AndroidManifest.xml.
+
+> Task :wear:dataBindingGenBaseClassesDebug
+> Task :wear:processDebugManifest
+> Task :wear:javaPreCompileDebug
+> Task :wear:mergeDebugShaders
+> Task :wear:compileDebugShaders NO-SOURCE
+> Task :wear:generateDebugAssets UP-TO-DATE
+> Task :wear:mergeDebugAssets
+> Task :wear:compressDebugAssets
+> Task :wear:mergeDebugJniLibFolders
+> Task :wear:mergeDebugNativeLibs NO-SOURCE
+> Task :wear:stripDebugDebugSymbols NO-SOURCE
+> Task :wear:checkDebugDuplicateClasses
+> Task :wear:validateSigningDebug
+> Task :wear:writeDebugAppMetadata
+> Task :wear:writeDebugSigningConfigVersions
+> Task :wear:processDebugManifestForPackage
+> Task :wear:mergeLibDexDebug
+> Task :mobile:processDebugManifestForPackage
+> Task :wear:desugarDebugFileDependencies
+> Task :wear:processDebugResources
+> Task :mobile:processDebugResources
+> Task :mobile:mergeExtDexDebug
+> Task :wear:mergeExtDexDebug
+
+> Task :wear:compileDebugKotlin
+w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/wear/src/main/java/com/example/samplewearmobileapp/MainActivity.kt:18:30 'AmbientModeSupport' is deprecated. Deprecated in Java
+w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/wear/src/main/java/com/example/samplewearmobileapp/MainActivity.kt:40:42 'GoogleApiClient' is deprecated. Deprecated in Java
+w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/wear/src/main/java/com/example/samplewearmobileapp/MainActivity.kt:50:5 'GoogleApiClient' is deprecated. Deprecated in Java
+w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/wear/src/main/java/com/example/samplewearmobileapp/MainActivity.kt:50:21 'ConnectionCallbacks' is deprecated. Deprecated in Java
+w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/wear/src/main/java/com/example/samplewearmobileapp/MainActivity.kt:51:5 'AmbientModeSupport' is deprecated. Deprecated in Java
+w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/wear/src/main/java/com/example/samplewearmobileapp/MainActivity.kt:55:34 'GoogleApiClient' is deprecated. Deprecated in Java
+w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/wear/src/main/java/com/example/samplewearmobileapp/MainActivity.kt:64:45 'AmbientModeSupport' is deprecated. Deprecated in Java
+w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/wear/src/main/java/com/example/samplewearmobileapp/MainActivity.kt:349:39 'AmbientModeSupport' is deprecated. Deprecated in Java
+w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/wear/src/main/java/com/example/samplewearmobileapp/MainActivity.kt:361:40 'AmbientModeSupport' is deprecated. Deprecated in Java
+w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/wear/src/main/java/com/example/samplewearmobileapp/MainActivity.kt:370:29 'AmbientModeSupport' is deprecated. Deprecated in Java
+w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/wear/src/main/java/com/example/samplewearmobileapp/MainActivity.kt:463:18 'GoogleApiClient' is deprecated. Deprecated in Java
+w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/wear/src/main/java/com/example/samplewearmobileapp/MainActivity.kt:463:34 'Builder' is deprecated. Deprecated in Java
+w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/wear/src/main/java/com/example/samplewearmobileapp/MainActivity.kt:465:30 'API: Api<Wearable.WearableOptions!>' is deprecated. Deprecated in Java
+w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/wear/src/main/java/com/example/samplewearmobileapp/MainActivity.kt:527:18 'NodeApi: NodeApi' is deprecated. Deprecated in Java
+w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/wear/src/main/java/com/example/samplewearmobileapp/MainActivity.kt:539:18 'MessageApi: MessageApi' is deprecated. Deprecated in Java
+w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/wear/src/main/java/com/example/samplewearmobileapp/MainActivity.kt:713:22 'MessageApi: MessageApi' is deprecated. Deprecated in Java
+w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/wear/src/main/java/com/example/samplewearmobileapp/MainActivity.kt:767:18 'DataApi: DataApi' is deprecated. Deprecated in Java
+w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/wear/src/main/java/com/example/samplewearmobileapp/MainService.kt:46:13 Variable 'message' is never used
+w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/wear/src/main/java/com/example/samplewearmobileapp/trackers/heartrate/HeartRateListener.kt:43:66 'STATUS: ValueKey<Int!>!' is deprecated. Deprecated in Java
+w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/wear/src/main/java/com/example/samplewearmobileapp/trackers/heartrate/HeartRateListener.kt:46:62 'HEART_RATE_IBI: ValueKey<Int!>!' is deprecated. Deprecated in Java
+
+> Task :mobile:kspDebugKotlin
+> Task :wear:compileDebugJavaWithJavac FAILED
+.\gradlew : 
+At line:1 char:1
++ .\gradlew clean assembleDebug 2>&1 | Out-File 
+-FilePath .\build_outpu ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (:String) [] 
+   , RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task 
+':wear:compileDebugJavaWithJavac'.
+> Could not resolve all files for configuration 
+':wear:androidJdkImage'.
+   > Failed to transform core-for-system-modules.jar to 
+match attributes 
+{artifactType=_internal_android_jdk_image, 
+org.gradle.libraryelements=jar, 
+org.gradle.usage=java-runtime}.
+      > Execution failed for JdkImageTransform: 
+C:\Users\HP OMEN\AppData\Local\Android\Sdk\platforms\andr
+oid-34\core-for-system-modules.jar.
+         > Error while executing process C:\Program 
+Files\Eclipse 
+Adoptium\jdk-21.0.9.10-hotspot\bin\jlink.exe with 
+arguments {--module-path C:\Users\HP OMEN\.gradle\caches\
+transforms-3\b8509cc6a276e306df368a338fb5924b\transformed
+\output\temp\jmod --add-modules java.base --output 
+C:\Users\HP OMEN\.gradle\caches\transforms-3\b8509cc6a276
+e306df368a338fb5924b\transformed\output\jdkImage 
+--disable-plugin system-modules}
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log 
+output.
+> Run with --scan to get full insights.
+> Get more help at https://help.gradle.org.
+
+BUILD FAILED in 17s
+63 actionable tasks: 63 executed

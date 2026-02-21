@@ -1,0 +1,169 @@
+﻿Starting a Gradle Daemon, 3 incompatible and 1 stopped Daemons could not be reused, use --status for details
+> Task :mobile:clean
+> Task :shared:clean
+> Task :wear:clean UP-TO-DATE
+> Task :mobile:preBuild UP-TO-DATE
+> Task :mobile:preDebugBuild UP-TO-DATE
+> Task :mobile:mergeDebugNativeDebugMetadata NO-SOURCE
+> Task :shared:checkKotlinGradlePluginConfigurationErrors
+> Task :shared:processResources NO-SOURCE
+> Task :mobile:checkKotlinGradlePluginConfigurationErrors
+> Task :shared:compileKotlin
+> Task :shared:compileJava NO-SOURCE
+> Task :shared:classes UP-TO-DATE
+> Task :mobile:dataBindingMergeDependencyArtifactsDebug
+> Task :shared:jar
+> Task :mobile:generateDebugResValues
+> Task :mobile:generateDebugResources
+> Task :mobile:packageDebugResources
+> Task :mobile:mapDebugSourceSetPaths
+> Task :mobile:createDebugCompatibleScreenManifests
+> Task :mobile:checkDebugAarMetadata
+> Task :mobile:extractDeepLinksDebug
+> Task :mobile:parseDebugLocalResources
+> Task :mobile:mergeDebugResources
+
+> Task :mobile:processDebugMainManifest
+package="com.example.samplewearmobileapp" found in source AndroidManifest.xml: D:\SEMESTER12\SkripiDump\4_HeartMonitor\mobile\src\main\AndroidManifest.xml.
+Setting the namespace via the package attribute in the source AndroidManifest.xml is no longer supported, and the value is ignored.
+Recommendation: remove package="com.example.samplewearmobileapp" from the source AndroidManifest.xml: D:\SEMESTER12\SkripiDump\4_HeartMonitor\mobile\src\main\AndroidManifest.xml.
+
+> Task :mobile:dataBindingGenBaseClassesDebug
+> Task :mobile:processDebugManifest
+> Task :mobile:javaPreCompileDebug
+> Task :mobile:mergeDebugShaders
+> Task :mobile:compileDebugShaders NO-SOURCE
+> Task :mobile:generateDebugAssets UP-TO-DATE
+> Task :mobile:mergeDebugAssets
+> Task :mobile:compressDebugAssets
+> Task :mobile:desugarDebugFileDependencies
+> Task :mobile:mergeDebugJniLibFolders
+> Task :mobile:checkDebugDuplicateClasses
+> Task :mobile:mergeDebugNativeLibs NO-SOURCE
+> Task :mobile:stripDebugDebugSymbols NO-SOURCE
+> Task :mobile:validateSigningDebug
+> Task :mobile:writeDebugAppMetadata
+> Task :mobile:writeDebugSigningConfigVersions
+> Task :wear:preBuild UP-TO-DATE
+> Task :wear:preDebugBuild UP-TO-DATE
+> Task :wear:mergeDebugNativeDebugMetadata NO-SOURCE
+> Task :wear:checkKotlinGradlePluginConfigurationErrors
+> Task :mobile:mergeLibDexDebug
+> Task :mobile:processDebugManifestForPackage
+> Task :wear:dataBindingMergeDependencyArtifactsDebug
+> Task :wear:generateDebugResValues
+> Task :wear:generateDebugResources
+> Task :mobile:mergeExtDexDebug
+> Task :wear:packageDebugResources
+> Task :wear:parseDebugLocalResources
+> Task :wear:checkDebugAarMetadata
+> Task :wear:mapDebugSourceSetPaths
+> Task :wear:createDebugCompatibleScreenManifests
+> Task :wear:extractDeepLinksDebug
+> Task :wear:mergeDebugResources
+
+> Task :wear:processDebugMainManifest
+package="com.example.samplewearmobileapp" found in source AndroidManifest.xml: D:\SEMESTER12\SkripiDump\4_HeartMonitor\wear\src\main\AndroidManifest.xml.
+Setting the namespace via the package attribute in the source AndroidManifest.xml is no longer supported, and the value is ignored.
+Recommendation: remove package="com.example.samplewearmobileapp" from the source AndroidManifest.xml: D:\SEMESTER12\SkripiDump\4_HeartMonitor\wear\src\main\AndroidManifest.xml.
+
+> Task :wear:dataBindingGenBaseClassesDebug
+> Task :wear:processDebugManifest
+> Task :wear:javaPreCompileDebug
+> Task :wear:mergeDebugShaders
+> Task :wear:compileDebugShaders NO-SOURCE
+> Task :wear:generateDebugAssets UP-TO-DATE
+> Task :wear:mergeDebugAssets
+> Task :wear:compressDebugAssets
+> Task :wear:mergeDebugJniLibFolders
+> Task :wear:checkDebugDuplicateClasses
+> Task :wear:desugarDebugFileDependencies
+> Task :wear:mergeDebugNativeLibs NO-SOURCE
+> Task :wear:stripDebugDebugSymbols NO-SOURCE
+> Task :wear:validateSigningDebug
+> Task :wear:writeDebugAppMetadata
+> Task :wear:writeDebugSigningConfigVersions
+> Task :wear:mergeLibDexDebug
+> Task :wear:processDebugManifestForPackage
+> Task :wear:mergeExtDexDebug
+> Task :wear:processDebugResources
+> Task :mobile:processDebugResources
+
+> Task :wear:compileDebugKotlin
+w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/wear/src/main/java/com/example/samplewearmobileapp/MainActivity.kt:18:30 'AmbientModeSupport' is deprecated. Deprecated in Java
+w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/wear/src/main/java/com/example/samplewearmobileapp/MainActivity.kt:40:42 'GoogleApiClient' is deprecated. Deprecated in Java
+w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/wear/src/main/java/com/example/samplewearmobileapp/MainActivity.kt:50:5 'GoogleApiClient' is deprecated. Deprecated in Java
+w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/wear/src/main/java/com/example/samplewearmobileapp/MainActivity.kt:50:21 'ConnectionCallbacks' is deprecated. Deprecated in Java
+w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/wear/src/main/java/com/example/samplewearmobileapp/MainActivity.kt:51:5 'AmbientModeSupport' is deprecated. Deprecated in Java
+w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/wear/src/main/java/com/example/samplewearmobileapp/MainActivity.kt:55:34 'GoogleApiClient' is deprecated. Deprecated in Java
+w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/wear/src/main/java/com/example/samplewearmobileapp/MainActivity.kt:64:45 'AmbientModeSupport' is deprecated. Deprecated in Java
+w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/wear/src/main/java/com/example/samplewearmobileapp/MainActivity.kt:349:39 'AmbientModeSupport' is deprecated. Deprecated in Java
+w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/wear/src/main/java/com/example/samplewearmobileapp/MainActivity.kt:361:40 'AmbientModeSupport' is deprecated. Deprecated in Java
+w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/wear/src/main/java/com/example/samplewearmobileapp/MainActivity.kt:370:29 'AmbientModeSupport' is deprecated. Deprecated in Java
+w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/wear/src/main/java/com/example/samplewearmobileapp/MainActivity.kt:463:18 'GoogleApiClient' is deprecated. Deprecated in Java
+w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/wear/src/main/java/com/example/samplewearmobileapp/MainActivity.kt:463:34 'Builder' is deprecated. Deprecated in Java
+w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/wear/src/main/java/com/example/samplewearmobileapp/MainActivity.kt:465:30 'API: Api<Wearable.WearableOptions!>' is deprecated. Deprecated in Java
+w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/wear/src/main/java/com/example/samplewearmobileapp/MainActivity.kt:527:18 'NodeApi: NodeApi' is deprecated. Deprecated in Java
+w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/wear/src/main/java/com/example/samplewearmobileapp/MainActivity.kt:539:18 'MessageApi: MessageApi' is deprecated. Deprecated in Java
+w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/wear/src/main/java/com/example/samplewearmobileapp/MainActivity.kt:713:22 'MessageApi: MessageApi' is deprecated. Deprecated in Java
+w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/wear/src/main/java/com/example/samplewearmobileapp/MainActivity.kt:767:18 'DataApi: DataApi' is deprecated. Deprecated in Java
+w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/wear/src/main/java/com/example/samplewearmobileapp/MainService.kt:46:13 Variable 'message' is never used
+w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/wear/src/main/java/com/example/samplewearmobileapp/trackers/heartrate/HeartRateListener.kt:43:66 'STATUS: ValueKey<Int!>!' is deprecated. Deprecated in Java
+w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/wear/src/main/java/com/example/samplewearmobileapp/trackers/heartrate/HeartRateListener.kt:46:62 'HEART_RATE_IBI: ValueKey<Int!>!' is deprecated. Deprecated in Java
+
+> Task :mobile:kspDebugKotlin
+> Task :wear:compileDebugJavaWithJavac
+> Task :wear:dexBuilderDebug
+> Task :wear:processDebugJavaRes
+> Task :wear:mergeDebugGlobalSynthetics
+> Task :wear:mergeProjectDexDebug
+> Task :wear:mergeDebugJavaResource
+> Task :wear:packageDebug
+> Task :wear:createDebugApkListingFileRedirect
+> Task :wear:assembleDebug
+
+> Task :mobile:compileDebugKotlin
+w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/mobile/src/main/java/com/example/samplewearmobileapp/EcgPlotter.kt:120:24 Condition 'gridRect == null' is always 'false'
+w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/mobile/src/main/java/com/example/samplewearmobileapp/EcgPlotter.kt:247:13 Condition 'plot == null' is always 'false'
+w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/mobile/src/main/java/com/example/samplewearmobileapp/EcgPlotter.kt:274:13 Condition 'seriesVisible != null' is always 'true'
+w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/mobile/src/main/java/com/example/samplewearmobileapp/MainActivity.kt:12:27 'PreferenceManager' is deprecated. Deprecated in Java
+w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/mobile/src/main/java/com/example/samplewearmobileapp/MainActivity.kt:53:42 'GoogleApiClient' is deprecated. Deprecated in Java
+w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/mobile/src/main/java/com/example/samplewearmobileapp/MainActivity.kt:81:43 'GoogleApiClient' is deprecated. Deprecated in Java
+w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/mobile/src/main/java/com/example/samplewearmobileapp/MainActivity.kt:81:59 'ConnectionCallbacks' is deprecated. Deprecated in Java
+w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/mobile/src/main/java/com/example/samplewearmobileapp/MainActivity.kt:84:34 'GoogleApiClient' is deprecated. Deprecated in Java
+w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/mobile/src/main/java/com/example/samplewearmobileapp/MainActivity.kt:404:29 'PreferenceManager' is deprecated. Deprecated in Java
+w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/mobile/src/main/java/com/example/samplewearmobileapp/MainActivity.kt:404:47 'getDefaultSharedPreferences(Context!): SharedPreferences!' is deprecated. Deprecated in Java
+w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/mobile/src/main/java/com/example/samplewearmobileapp/MainActivity.kt:435:18 'GoogleApiClient' is deprecated. Deprecated in Java
+w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/mobile/src/main/java/com/example/samplewearmobileapp/MainActivity.kt:435:34 'Builder' is deprecated. Deprecated in Java
+w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/mobile/src/main/java/com/example/samplewearmobileapp/MainActivity.kt:436:30 'API: Api<Wearable.WearableOptions!>' is deprecated. Deprecated in Java
+w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/mobile/src/main/java/com/example/samplewearmobileapp/MainActivity.kt:758:18 'NodeApi: NodeApi' is deprecated. Deprecated in Java
+w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/mobile/src/main/java/com/example/samplewearmobileapp/MainActivity.kt:782:18 'MessageApi: MessageApi' is deprecated. Deprecated in Java
+w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/mobile/src/main/java/com/example/samplewearmobileapp/MainActivity.kt:786:18 'DataApi: DataApi' is deprecated. Deprecated in Java
+w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/mobile/src/main/java/com/example/samplewearmobileapp/MainActivity.kt:955:33 Condition 'deviceId == null' is always 'false'
+w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/mobile/src/main/java/com/example/samplewearmobileapp/MainActivity.kt:1242:13 Condition 'deviceId == null' is always 'false'
+w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/mobile/src/main/java/com/example/samplewearmobileapp/MainActivity.kt:1257:19 'backgroundEntered(): Unit' is deprecated. in release 3.2.8. Move to the background is not relevant information for SDK starting from release 3.2.8
+w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/mobile/src/main/java/com/example/samplewearmobileapp/MainActivity.kt:1266:15 'onBackPressed(): Unit' is deprecated. Deprecated in Java
+w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/mobile/src/main/java/com/example/samplewearmobileapp/MainActivity.kt:1582:17 Condition 'deviceId == null' is always 'false'
+w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/mobile/src/main/java/com/example/samplewearmobileapp/MainActivity.kt:1600:17 Condition 'deviceId == null' is always 'false'
+w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/mobile/src/main/java/com/example/samplewearmobileapp/MainActivity.kt:1754:21 Variable 'sampleCount' is never used
+w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/mobile/src/main/java/com/example/samplewearmobileapp/MainActivity.kt:2438:22 'MessageApi: MessageApi' is deprecated. Deprecated in Java
+w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/mobile/src/main/java/com/example/samplewearmobileapp/MainActivity.kt:2605:35 Condition 'ecgPlotter!!.getVisibleSeries() != null' is always 'true'
+w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/mobile/src/main/java/com/example/samplewearmobileapp/utils/AppUtils.kt:93:13 Name shadowed: msg
+w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/mobile/src/main/java/com/example/samplewearmobileapp/utils/UriUtils.kt:50:20 Condition 'tokens == null' is always 'false'
+w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/mobile/src/main/java/com/example/samplewearmobileapp/utils/UriUtils.kt:278:17 Condition 'info != null' is always 'true'
+
+> Task :mobile:compileDebugJavaWithJavac
+> Task :mobile:hiltAggregateDepsDebug
+> Task :mobile:hiltJavaCompileDebug
+> Task :mobile:processDebugJavaRes
+> Task :mobile:transformDebugClassesWithAsm
+> Task :mobile:dexBuilderDebug
+> Task :mobile:mergeDebugJavaResource
+> Task :mobile:mergeDebugGlobalSynthetics
+> Task :mobile:mergeProjectDexDebug
+> Task :mobile:packageDebug
+> Task :mobile:createDebugApkListingFileRedirect
+> Task :mobile:assembleDebug
+
+BUILD SUCCESSFUL in 1m 34s
+82 actionable tasks: 81 executed, 1 up-to-date
