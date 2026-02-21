@@ -12,6 +12,9 @@
     <!-- Android 13+ notification permission -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
 
+    <!-- Required for MobileService to keep CPU awake during data collection -->
+    <uses-permission android:name="android.permission.WAKE_LOCK"/>
+
     <!-- Request legacy Bluetooth permissions on older devices. -->
     <uses-permission android:name="android.permission.BLUETOOTH"
         android:maxSdkVersion="30" />
