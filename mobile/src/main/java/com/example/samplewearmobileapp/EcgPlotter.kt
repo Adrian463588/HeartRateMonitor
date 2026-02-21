@@ -14,6 +14,8 @@ import com.example.samplewearmobileapp.Constants.N_TOTAL_VISIBLE_ECG_POINTS
 import com.example.samplewearmobileapp.utils.AppUtils
 import com.polar.sdk.api.model.PolarEcgData
 import java.util.*
+import android.os.Handler
+import android.os.Looper
 
 class EcgPlotter: PlotterListener {
     private lateinit var parentActivity: MainActivity
@@ -44,6 +46,15 @@ class EcgPlotter: PlotterListener {
      * The next index in the data (or the length of the series.)
      */
     private var dataIndex: Long = 0
+
+    /** BUG-003 FIX: Throttle redraws to 30fps max */
+    private val redrawHandler = Handler(Looper.getMainLooper())
+    @Volatile
+    private var redrawPending = false
+    companion object {
+        private const val TAG = "EcgPlotter"
+        private const val REDRAW_INTERVAL_MS = 33L  // ~30fps
+    }
 
     /**
      * Simplified constructor.
@@ -206,7 +217,8 @@ class EcgPlotter: PlotterListener {
         lastBatchTimestamps = batchTs
         // Reset the domain boundaries
         updateDomainBoundaries()
-        update()
+        // BUG-003 FIX: Schedule throttled redraw instead of immediate
+        scheduleRedraw()
     }
 
     private fun updateDomainBoundaries() {
@@ -220,6 +232,20 @@ class EcgPlotter: PlotterListener {
      */
     override fun update() {
         parentActivity.runOnUiThread { plot.redraw() }
+    }
+
+    /**
+     * BUG-003 FIX: Throttled redraw — max 30fps.
+     * Multiple addValues() calls within a 33ms window are
+     * coalesced into a single plot.redraw().
+     */
+    private fun scheduleRedraw() {
+        if (redrawPending) return  // already scheduled
+        redrawPending = true
+        redrawHandler.postDelayed({
+            redrawPending = false
+            parentActivity.runOnUiThread { plot.redraw() }
+        }, REDRAW_INTERVAL_MS)
     }
 
     /**
@@ -334,9 +360,5 @@ class EcgPlotter: PlotterListener {
         seriesVisible.clear()
         seriesAll.clear()
         update()
-    }
-
-    companion object {
-        private const val TAG = "EcgPlotter"
     }
 }
