@@ -1,6 +1,5 @@
 # HeartRateMonitor: Dual-Module Vitals Tracking
 
-![Project Banner](docs/banner_placeholder.png)
 
 > **Elevator Pitch:** A robust, dual-module Android system (Mobile + Wear OS) that provides real-time sensing and synchronization of PPG (via Samsung Galaxy Watch) and ECG (via Polar sensors) data for advanced vital signs monitoring.
 
