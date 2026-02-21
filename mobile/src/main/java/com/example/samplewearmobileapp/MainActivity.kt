@@ -71,6 +71,14 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.platform.ComposeView
+import com.example.samplewearmobileapp.ui.theme.HeartMonitorTheme
+import com.example.samplewearmobileapp.ui.dashboard.DashboardOverlay
+import com.example.samplewearmobileapp.ui.dashboard.DashboardUiState
+import com.example.samplewearmobileapp.ui.components.SensorState
+import com.example.samplewearmobileapp.ui.components.RecordingState
+import com.example.samplewearmobileapp.ui.help.HelpBottomSheet
 import java.io.FileOutputStream
 import java.io.FileWriter
 import java.io.PrintWriter
@@ -156,6 +164,11 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
     private lateinit var textPpgIrStatus: TextView
     private lateinit var textPpgRedStatus: TextView
     private lateinit var textEcgStatus: TextView
+
+    // === Compose Dashboard State ===
+    private val showHelpSheet = mutableStateOf(false)
+    private val dashboardState = mutableStateOf(DashboardUiState())
+
     private lateinit var ppgContainer: ViewGroup
     private lateinit var ppgGreenPlot: XYPlot
     private lateinit var ppgIrPlot: XYPlot
@@ -401,6 +414,9 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
             textEcgStatus.text = getString(R.string.ecg_status,
                 getString(R.string.status_default))
         }
+
+        // === Setup Compose Dashboard ===
+        setupComposeDashboard()
 
         sharedPreferences = PreferenceManager.getDefaultSharedPreferences(this)
         // register preference listener
@@ -1320,19 +1336,74 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
      */
     private fun showHelp() {
         Log.d(TAG, "showHelp")
-//        try {
-//            // Start theInfoActivity
-//            val intent = Intent()
-//            intent.setClass(this, InfoActivity::class.java)
-//            intent.addFlags(
-//                Intent.FLAG_ACTIVITY_NEW_TASK
-//                        or Intent.FLAG_ACTIVITY_SINGLE_TOP
-//            )
-//            intent.putExtra(INFO_URL, "file:///android_asset/kedotnetecg.html")
-//            startActivity(intent)
-//        } catch (ex: java.lang.Exception) {
-//            Utils.excMsg(this, getString(R.string.help_show_error), ex)
-//        }
+        showHelpSheet.value = true
+    }
+
+    /**
+     * Initializes the ComposeView with the M3 dashboard overlay
+     * and HelpBottomSheet.
+     */
+    private fun setupComposeDashboard() {
+        val composeView = binding.composeDashboard
+        composeView.setContent {
+            HeartMonitorTheme {
+                // Dashboard overlay with sensor cards + record controls
+                DashboardOverlay(
+                    uiState = dashboardState.value,
+                    onRecord = {
+                        // Trigger existing record logic
+                        if (!isRecording) {
+                            menu.performIdentifierAction(R.id.pause, 0)
+                        }
+                    },
+                    onPause = {
+                        if (isRecording && !isPaused) {
+                            menu.performIdentifierAction(R.id.pause, 0)
+                        }
+                    },
+                    onResume = {
+                        if (isRecording && isPaused) {
+                            menu.performIdentifierAction(R.id.pause, 0)
+                        }
+                    },
+                    onStop = {
+                        if (isRecording) {
+                            menu.performIdentifierAction(R.id.stop_recording, 0)
+                        }
+                    },
+                    onEventMarker = { label ->
+                        Log.d(TAG, "Event marker: $label at ${System.currentTimeMillis()}")
+                    }
+                )
+
+                // Help BottomSheet (conditionally shown)
+                if (showHelpSheet.value) {
+                    HelpBottomSheet(
+                        onDismiss = { showHelpSheet.value = false }
+                    )
+                }
+            }
+        }
+    }
+
+    /**
+     * Updates the Compose dashboard state from current activity state.
+     * Call this whenever sensor status or recording state changes.
+     */
+    private fun updateDashboardState() {
+        val recordingState = when {
+            !isRecording -> RecordingState.IDLE
+            isPaused -> RecordingState.PAUSED
+            else -> RecordingState.RECORDING
+        }
+        val minutes = (elapsedSeconds / 60).toInt()
+        val seconds = (elapsedSeconds % 60).toInt()
+        val elapsed = String.format("%02d:%02d", minutes, seconds)
+
+        dashboardState.value = dashboardState.value.copy(
+            recordingState = recordingState,
+            elapsedTime = elapsed
+        )
     }
 
     /**
