@@ -13,7 +13,7 @@ dependencyResolutionManagement {
         maven { url 'https://jitpack.io' }
     }
 }
-rootProject.name = "Sample Wear Mobile App"
+rootProject.name = "HeartRateMonitor"
 include ':mobile'
 include ':wear'
 include ':shared'

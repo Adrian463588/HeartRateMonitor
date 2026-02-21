@@ -879,7 +879,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
 
     override fun onSharedPreferenceChanged(
         sharedPreferences: SharedPreferences?,
-        key: String
+        key: String?
     ) {
         Log.d(TAG, "onSharedPreferenceChanged: key=$key")
     }
@@ -2319,7 +2319,8 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
 
         when (dataEvent.dataItem.uri.path) {
             MessagePath.DATA_HR -> {
-                val heartData = Gson().fromJson(String(dataEvent.dataItem.data),
+                val rawBytes = dataEvent.dataItem.data ?: return
+                val heartData = Gson().fromJson(String(rawBytes),
                     HeartData::class.java)
                 Log.d(TAG, "Heart Rate data received\n" +
                         "HR: ${heartData.hr}\n" +
@@ -2327,7 +2328,8 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
                         "Timestamp: ${heartData.timestamp}")
             }
             MessagePath.DATA_PPG_GREEN -> {
-                val ppgGreenData = Gson().fromJson(String(dataEvent.dataItem.data),
+                val rawBytes = dataEvent.dataItem.data ?: return
+                val ppgGreenData = Gson().fromJson(String(rawBytes),
                     PpgData::class.java)
                 Log.d(TAG, "PPG Green data batch received\n" +
                         "Data count: ${ppgGreenData.size}\n" +
@@ -2350,7 +2352,8 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
                 }
             }
             MessagePath.DATA_PPG_IR -> {
-                val ppgIrData = Gson().fromJson(String(dataEvent.dataItem.data),
+                val rawBytes = dataEvent.dataItem.data ?: return
+                val ppgIrData = Gson().fromJson(String(rawBytes),
                     PpgData::class.java)
                 Log.d(TAG, "PPG IR data batch received\n" +
                         "Data count: ${ppgIrData.size}")
@@ -2371,7 +2374,8 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
                 }
             }
             MessagePath.DATA_PPG_RED -> {
-                val ppgRedData = Gson().fromJson(String(dataEvent.dataItem.data),
+                val rawBytes = dataEvent.dataItem.data ?: return
+                val ppgRedData = Gson().fromJson(String(rawBytes),
                     PpgData::class.java)
                 Log.d(TAG, "PPG Red data batch received\n" +
                         "Data count: ${ppgRedData.size}\n" +
