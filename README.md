@@ -1,8 +1,8 @@
-# HealthMonitor: Dual-Module Vitals Tracking
+# HeartRateMonitor: Dual-Module Vitals Tracking
 
 ![Project Banner](docs/banner_placeholder.png)
 
-> **Elevator Pitch:** A robust, dual-module Android system (Mobile + Wear OS) that provides real-time sensitization and synchronization of PPG (via Samsung Galaxy Watch) and ECG (via Polar sensors) data for advanced vital signs monitoring.
+> **Elevator Pitch:** A robust, dual-module Android system (Mobile + Wear OS) that provides real-time sensing and synchronization of PPG (via Samsung Galaxy Watch) and ECG (via Polar sensors) data for advanced vital signs monitoring.
 
 ![Kotlin](https://img.shields.io/badge/Kotlin-1.8-blue.svg) 
 ![Platform](https://img.shields.io/badge/Platform-Android%20%7C%20Wear%20OS-green.svg) 
