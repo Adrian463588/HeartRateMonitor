@@ -68,12 +68,14 @@ class MobileService : Service() {
         val notification = buildNotification(message)
 
         // Use ServiceCompat for backward-compatible foregroundServiceType
+        // Combine CONNECTED_DEVICE (BLE) + HEALTH (sensor data) types
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             ServiceCompat.startForeground(
                 this,
                 NOTIFICATION_ID,
                 notification,
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE or
+                        ServiceInfo.FOREGROUND_SERVICE_TYPE_HEALTH
             )
         } else {
             startForeground(NOTIFICATION_ID, notification)
@@ -121,7 +123,7 @@ class MobileService : Service() {
             .setContentText(contentText)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .build()
     }
@@ -130,11 +132,9 @@ class MobileService : Service() {
         val channel = NotificationChannel(
             CHANNEL_ID,
             "Data Recording Service",
-            NotificationManager.IMPORTANCE_HIGH
+            NotificationManager.IMPORTANCE_LOW  // Silent, persistent — prevents user from blocking
         ).apply {
             description = "Keeps BLE and sensor data collection alive"
-            enableLights(true)
-            lightColor = Color.BLUE
         }
         val manager = getSystemService(NotificationManager::class.java)
         manager?.createNotificationChannel(channel)

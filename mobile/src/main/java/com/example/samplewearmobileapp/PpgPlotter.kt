@@ -11,6 +11,8 @@ import com.example.samplewearmobileapp.utils.AppUtils
 import java.text.DecimalFormat
 import kotlin.math.ceil
 import kotlin.math.floor
+import android.os.Handler
+import android.os.Looper
 
 class PpgPlotter: PlotterListener {
     private lateinit var parentActivity: MainActivity
@@ -64,6 +66,15 @@ class PpgPlotter: PlotterListener {
 //    private var lastTime = Double.NaN
 //    private var startTime = Double.NaN
     private var runningMax: RunningMax = RunningMax(N_PPG_IR_RED_PLOT_POINTS)
+
+    /** BUG-003 FIX: Throttle redraws to 30fps max */
+    private val redrawHandler = Handler(Looper.getMainLooper())
+    @Volatile
+    private var redrawPending = false
+    companion object {
+        private const val TAG = "PpgPlotter"
+        private const val REDRAW_INTERVAL_MS = 33L  // ~30fps
+    }
 
     /**
      * Simplified constructor.
@@ -191,9 +202,9 @@ class PpgPlotter: PlotterListener {
         dataIndex++
 
         // Reset the domain boundaries
-//        updateDomainBoundaries()
         updateDomainRangeBoundaries()
-        update()
+        // BUG-003 FIX: Schedule throttled redraw instead of immediate
+        scheduleRedraw()
     }
 
 //    private fun updateDomainBoundaries() {
@@ -231,6 +242,20 @@ class PpgPlotter: PlotterListener {
      */
     override fun update() {
         parentActivity.runOnUiThread { plot.redraw() }
+    }
+
+    /**
+     * BUG-003 FIX: Throttled redraw — max 30fps.
+     * Multiple addValues() calls within a 33ms window are
+     * coalesced into a single plot.redraw().
+     */
+    private fun scheduleRedraw() {
+        if (redrawPending) return
+        redrawPending = true
+        redrawHandler.postDelayed({
+            redrawPending = false
+            parentActivity.runOnUiThread { plot.redraw() }
+        }, REDRAW_INTERVAL_MS)
     }
 
     /**
@@ -306,9 +331,5 @@ class PpgPlotter: PlotterListener {
         seriesTimestamp.clear()
         runningMax = RunningMax(visiblePointLimit)
         update()
-    }
-
-    companion object {
-        private const val TAG = "PpgPlotter"
     }
 }

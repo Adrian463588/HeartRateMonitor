@@ -67,6 +67,7 @@ import com.polar.sdk.api.model.PolarHrData
 import com.polar.sdk.api.model.PolarSensorSetting
 import io.reactivex.rxjava3.android.schedulers.AndroidSchedulers
 import io.reactivex.rxjava3.disposables.Disposable
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -493,9 +494,8 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         val id = item.itemId
         if (id == R.id.pause) {
-            if (polarApi == null) {
-                return true
-            }
+            // BUG-002 FIX: Do NOT block on polarApi — allow recording even if
+            // Polar hasn't connected yet (enables PPG-only recording).
             if (!isRecording) {
                 // === START RECORDING ===
                 MobileService.startService(this, "Start recording...")
@@ -521,11 +521,17 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
                 ecgPlotter?.clear()
                 qrsPlotter?.clear()
                 hrPlotter?.clear()
-                if (ecgDisposable == null) {
-                    toggleEcgStream()
+                // Start ECG stream on IO thread (BUG-002: was blocking Main Thread)
+                if (ecgDisposable == null && polarApi != null) {
+                    lifecycleScope.launch(Dispatchers.IO) {
+                        toggleEcgStream()
+                    }
                     isEcgRunning = true
                 }
-                togglePpgTracker()
+                // Start PPG tracker on IO thread
+                lifecycleScope.launch(Dispatchers.IO) {
+                    togglePpgTracker()
+                }
                 startTimer()
                 // Update menu icons
                 menu.findItem(R.id.pause).icon = ResourcesCompat.getDrawable(

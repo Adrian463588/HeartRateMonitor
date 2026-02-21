@@ -82,6 +82,21 @@ class MainViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(UiState())
     val uiState: StateFlow<UiState> = _uiState.asStateFlow()
 
+    /**
+     * Record button is enabled when session is IDLE or STOPPED.
+     * Does NOT require Polar to be connected — allows PPG-only recording.
+     */
+    val isReadyToRecord: StateFlow<Boolean> = _uiState.map { state ->
+        state.sessionState == SessionState.IDLE ||
+        state.sessionState == SessionState.STOPPED
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
+
+    /** Convenience: true while actively recording or paused */
+    val isRecording: StateFlow<Boolean> = _uiState.map { state ->
+        state.sessionState == SessionState.RECORDING ||
+        state.sessionState == SessionState.PAUSED
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
     // === Permission State ===
     val permissionState = permissionManager.state
 
