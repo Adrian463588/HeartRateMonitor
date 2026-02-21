@@ -6,69 +6,82 @@
     android:layout_height="match_parent"
     tools:context=".MainActivity">
 
-    <!-- Hidden status TextViews (kept for ViewBinding compatibility, data-only) -->
+    <!-- Status TextViews — visible for researcher reference -->
     <androidx.constraintlayout.widget.ConstraintLayout
         android:id="@+id/status_container"
-        android:layout_width="0dp"
-        android:layout_height="0dp"
-        android:visibility="gone"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:padding="8dp"
+        android:background="@color/clinical_surface"
         app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintStart_toStartOf="parent">
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
 
         <TextView
             android:id="@+id/status_container_title"
-            android:layout_width="wrap_content"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:text="@string/status_container_title"
-            android:visibility="gone"
+            android:textStyle="bold"
+            android:textSize="14sp"
+            android:textColor="@color/clinical_primary"
             app:layout_constraintTop_toTopOf="parent"
-            app:layout_constraintStart_toStartOf="parent" />
-
-        <TextView
-            android:id="@+id/status_ppg_green"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:visibility="gone"
-            app:layout_constraintTop_toTopOf="parent"
-            app:layout_constraintStart_toStartOf="parent" />
-
-        <TextView
-            android:id="@+id/status_ppg_ir"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:visibility="gone"
-            app:layout_constraintTop_toTopOf="parent"
-            app:layout_constraintStart_toStartOf="parent" />
-
-        <TextView
-            android:id="@+id/status_ppg_red"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:visibility="gone"
-            app:layout_constraintTop_toTopOf="parent"
-            app:layout_constraintStart_toStartOf="parent" />
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent" />
 
         <TextView
             android:id="@+id/status_ecg"
-            android:layout_width="wrap_content"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:visibility="gone"
-            app:layout_constraintTop_toTopOf="parent"
-            app:layout_constraintStart_toStartOf="parent" />
+            android:textSize="12sp"
+            android:paddingTop="2dp"
+            app:layout_constraintTop_toBottomOf="@id/status_container_title"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent" />
+
+        <TextView
+            android:id="@+id/status_ppg_green"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:textSize="12sp"
+            android:paddingTop="2dp"
+            app:layout_constraintTop_toBottomOf="@id/status_ecg"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent" />
+
+        <TextView
+            android:id="@+id/status_ppg_ir"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:textSize="12sp"
+            android:paddingTop="2dp"
+            app:layout_constraintTop_toBottomOf="@id/status_ppg_green"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent" />
+
+        <TextView
+            android:id="@+id/status_ppg_red"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:textSize="12sp"
+            android:paddingTop="2dp"
+            app:layout_constraintTop_toBottomOf="@id/status_ppg_ir"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent" />
 
     </androidx.constraintlayout.widget.ConstraintLayout>
 
-    <!-- Compose-based Dashboard Overlay (new M3 sensor cards + record controls) -->
+    <!-- Compose-based Dashboard Overlay (M3 sensor cards + record controls) -->
     <androidx.compose.ui.platform.ComposeView
         android:id="@+id/compose_dashboard"
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/status_container"
         app:layout_constraintLeft_toLeftOf="parent"
         app:layout_constraintRight_toRightOf="parent"
         app:layout_constraintBottom_toTopOf="@id/plot_container"
         app:layout_constraintVertical_chainStyle="spread"
-        app:layout_constraintVertical_weight="0.35" />
+        app:layout_constraintVertical_weight="0.30" />
 
     <ScrollView
         android:id="@+id/plot_container"
@@ -135,10 +148,11 @@
                     app:graphMarginTop="10dp"
                     app:gridBackgroundColor="@color/white"
 
+                    app:layout_constraintBottom_toTopOf="@id/ppg_red_plot"
+                    app:layout_constraintHorizontal_bias="1.0"
                     app:layout_constraintLeft_toLeftOf="parent"
                     app:layout_constraintRight_toRightOf="parent"
                     app:layout_constraintTop_toBottomOf="@id/ppg_green_plot"
-                    app:layout_constraintBottom_toTopOf="@id/ppg_red_plot"
                     app:lineLabelInsetLeft="15dp"
                     app:renderMode="use_background_thread"
                     app:title="@string/ppg_ir_plot_title"

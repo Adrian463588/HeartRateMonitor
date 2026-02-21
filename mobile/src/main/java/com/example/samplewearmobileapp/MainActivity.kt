@@ -556,6 +556,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
                 menu.findItem(R.id.pause).title = "Pause"
                 menu.findItem(R.id.stop_recording).isVisible = true
                 menu.findItem(R.id.save).isVisible = false
+                syncDashboard()
             } else if (!isPaused) {
                 // === PAUSE RECORDING ===
                 pauseRecording()
@@ -563,6 +564,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
                     resources, R.drawable.ic_play_arrow_white_36dp, null
                 )
                 menu.findItem(R.id.pause).title = "Resume"
+                syncDashboard()
             } else {
                 // === RESUME RECORDING ===
                 resumeRecording()
@@ -570,6 +572,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
                     resources, R.drawable.ic_pause_white_36dp, null
                 )
                 menu.findItem(R.id.pause).title = "Pause"
+                syncDashboard()
             }
             return true
         } else if (id == R.id.stop_recording) {
@@ -681,6 +684,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
             textEcgTime.text = getString(
                 R.string.elapsed_time_formatted, minutes, seconds
             )
+            syncDashboard()
         }
     }
 
@@ -710,6 +714,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
                 getString(R.string.status_paused))
             textPpgRedStatus.text = getString(R.string.ppg_red_status,
                 getString(R.string.status_paused))
+            syncDashboard()
         }
         Log.i(TAG, "Recording paused at ${elapsedSeconds}s")
     }
@@ -762,6 +767,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
         menu.findItem(R.id.pause).title = "Start"
         menu.findItem(R.id.stop_recording).isVisible = false
         menu.findItem(R.id.save).isVisible = true
+        syncDashboard()
         Log.i(TAG, "Recording stopped. Total elapsed: ${elapsedSeconds}s")
     }
 
@@ -773,6 +779,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
                 getString(if (isPpgIrRunning) R.string.status_running else R.string.status_stopped))
             textPpgRedStatus.text = getString(R.string.ppg_red_status,
                 getString(if (isPpgRedRunning) R.string.status_running else R.string.status_stopped))
+            syncDashboard()
         }
     }
 
@@ -792,6 +799,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
                     getString(R.string.status_connected))
                 textPpgRedStatus.text = getString(R.string.ppg_red_status,
                     getString(R.string.status_connected))
+                syncDashboard()
             }
 
             // request Wear App current state
@@ -830,6 +838,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
                 getString(R.string.status_disconnected))
             textPpgRedStatus.text = getString(R.string.ppg_red_status,
                 getString(R.string.status_disconnected))
+            syncDashboard()
         }
     }
 
@@ -1373,6 +1382,17 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
                     },
                     onEventMarker = { label ->
                         Log.d(TAG, "Event marker: $label at ${System.currentTimeMillis()}")
+                    },
+                    onSensorClick = { sensorId ->
+                        when (sensorId) {
+                            "POLAR" -> {
+                                if (!isPolarDeviceConnected) connectPolarDevice()
+                            }
+                            "PPG_GREEN" -> togglePpgTracker(PpgType.PPG_GREEN)
+                            "PPG_IR" -> togglePpgTracker(PpgType.PPG_IR)
+                            "PPG_RED" -> togglePpgTracker(PpgType.PPG_RED)
+                        }
+                        syncDashboard()
                     }
                 )
 
@@ -1386,24 +1406,52 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
         }
     }
 
+    // =========================================================================
+    // Centralized Dashboard State Sync
+    // =========================================================================
+
     /**
-     * Updates the Compose dashboard state from current activity state.
-     * Call this whenever sensor status or recording state changes.
+     * Single source of truth for Compose dashboard state.
+     * Derives all UI state from canonical boolean flags.
+     * Call this after ANY state mutation that affects the dashboard.
      */
-    private fun updateDashboardState() {
-        val recordingState = when {
+    private fun syncDashboard() {
+        val recState = when {
             !isRecording -> RecordingState.IDLE
             isPaused -> RecordingState.PAUSED
             else -> RecordingState.RECORDING
         }
         val minutes = (elapsedSeconds / 60).toInt()
         val seconds = (elapsedSeconds % 60).toInt()
-        val elapsed = String.format("%02d:%02d", minutes, seconds)
 
-        dashboardState.value = dashboardState.value.copy(
-            recordingState = recordingState,
-            elapsedTime = elapsed
+        dashboardState.value = DashboardUiState(
+            polarState = when {
+                isPolarDeviceConnected && isEcgRunning -> SensorState.STREAMING
+                isPolarDeviceConnected -> SensorState.CONNECTED
+                else -> SensorState.DISCONNECTED
+            },
+            polarDeviceName = if (deviceName != "NA") deviceName else "Polar H10",
+            ppgGreenState = deriveSensorState(isPpgGreenRunning),
+            ppgIrState = deriveSensorState(isPpgIrRunning),
+            ppgRedState = deriveSensorState(isPpgRedRunning),
+            recordingState = recState,
+            elapsedTime = String.format("%02d:%02d", minutes, seconds),
+            ppgGreenSampleCount = ppgGreenValueNumber.toLong(),
+            ppgIrSampleCount = ppgIrValueNumber.toLong(),
+            ppgRedSampleCount = ppgRedValueNumber.toLong()
         )
+    }
+
+    /**
+     * Derives the SensorState for a PPG channel based on its running flag
+     * and whether the watch is connected.
+     */
+    private fun deriveSensorState(isRunning: Boolean): SensorState {
+        return when {
+            connectedNode.isNullOrEmpty() -> SensorState.DISCONNECTED
+            isRunning -> SensorState.STREAMING
+            else -> SensorState.CONNECTED
+        }
     }
 
     /**
@@ -2426,6 +2474,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
                 runOnUiThread {
                     textPpgGreenStatus.text = getString(R.string.ppg_green_status,
                         getString(R.string.status_measuring))
+                    syncDashboard()
                 }
             }
             MessagePath.DATA_PPG_IR -> {
@@ -2448,6 +2497,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
                 runOnUiThread {
                     textPpgIrStatus.text = getString(R.string.ppg_ir_status,
                         getString(R.string.status_measuring))
+                    syncDashboard()
                 }
             }
             MessagePath.DATA_PPG_RED -> {
@@ -2472,6 +2522,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
                 runOnUiThread {
                     textPpgRedStatus.text = getString(R.string.ppg_red_status,
                         getString(R.string.status_measuring))
+                    syncDashboard()
                 }
             }
         }

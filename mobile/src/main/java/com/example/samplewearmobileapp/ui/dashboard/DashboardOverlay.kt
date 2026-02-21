@@ -56,6 +56,7 @@ fun DashboardOverlay(
     onResume: () -> Unit = {},
     onStop: () -> Unit = {},
     onEventMarker: (String) -> Unit = {},
+    onSensorClick: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val isDark = !MaterialTheme.colorScheme.background.luminance().let { it > 0.5f }
@@ -86,7 +87,8 @@ fun DashboardOverlay(
                     state = uiState.polarState,
                     sampleCount = uiState.ecgSampleCount,
                     icon = Icons.Default.MonitorHeart,
-                    accentColor = if (isDark) SensorColors.ecgTraceDark else SensorColors.ecgTraceLight
+                    accentColor = if (isDark) SensorColors.ecgTraceDark else SensorColors.ecgTraceLight,
+                    onClick = { onSensorClick("POLAR") }
                 )
             }
             // PPG Green
@@ -96,7 +98,8 @@ fun DashboardOverlay(
                     state = uiState.ppgGreenState,
                     sampleCount = uiState.ppgGreenSampleCount,
                     icon = Icons.Default.Watch,
-                    accentColor = if (isDark) SensorColors.ppgGreenTraceDark else SensorColors.ppgGreenTraceLight
+                    accentColor = if (isDark) SensorColors.ppgGreenTraceDark else SensorColors.ppgGreenTraceLight,
+                    onClick = { onSensorClick("PPG_GREEN") }
                 )
             }
             // PPG IR
@@ -106,7 +109,8 @@ fun DashboardOverlay(
                     state = uiState.ppgIrState,
                     sampleCount = uiState.ppgIrSampleCount,
                     icon = Icons.Default.Sensors,
-                    accentColor = if (isDark) SensorColors.ppgIrTraceDark else SensorColors.ppgIrTraceLight
+                    accentColor = if (isDark) SensorColors.ppgIrTraceDark else SensorColors.ppgIrTraceLight,
+                    onClick = { onSensorClick("PPG_IR") }
                 )
             }
             // PPG Red
@@ -116,7 +120,8 @@ fun DashboardOverlay(
                     state = uiState.ppgRedState,
                     sampleCount = uiState.ppgRedSampleCount,
                     icon = Icons.Default.FavoriteBorder,
-                    accentColor = if (isDark) SensorColors.ppgRedTraceDark else SensorColors.ppgRedTraceLight
+                    accentColor = if (isDark) SensorColors.ppgRedTraceDark else SensorColors.ppgRedTraceLight,
+                    onClick = { onSensorClick("PPG_RED") }
                 )
             }
         }
