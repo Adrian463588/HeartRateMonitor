@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- Healthcare Semantic Colors -->
     <color name="purple_200">#FFBB86FC</color>
     <color name="purple_500">#FF6200EE</color>
     <color name="purple_700">#FF3700B3</color>
@@ -7,4 +8,24 @@
     <color name="teal_700">#FF018786</color>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+
+    <!-- Clinical Blue Primary -->
+    <color name="clinical_primary">#FF1565C0</color>
+    <color name="clinical_primary_variant">#FF0D47A1</color>
+    <color name="clinical_on_primary">#FFFFFFFF</color>
+
+    <!-- Sensor State Colors -->
+    <color name="sensor_active">#FF1B7A2B</color>
+    <color name="sensor_connecting">#FFF9A825</color>
+    <color name="sensor_error">#FFBA1A1A</color>
+
+    <!-- Trace Colors -->
+    <color name="ecg_trace">#FFC62828</color>
+    <color name="ppg_green_trace">#FF2E7D32</color>
+    <color name="ppg_ir_trace">#FF1565C0</color>
+    <color name="ppg_red_trace">#FFC62828</color>
+
+    <!-- Surface Colors -->
+    <color name="surface_light">#FFFAFAFA</color>
+    <color name="card_surface_light">#FFFFFFFF</color>
 </resources>
