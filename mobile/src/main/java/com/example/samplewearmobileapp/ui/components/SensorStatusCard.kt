@@ -29,7 +29,7 @@ import com.example.samplewearmobileapp.ui.theme.SensorColors
  * Connection state for a sensor card.
  */
 enum class SensorState {
-    DISCONNECTED, CONNECTING, CONNECTED, STREAMING
+    DISCONNECTED, CONNECTING, CONNECTED, STREAMING, MEASURING, PAUSED, STOPPED
 }
 
 /**
@@ -62,6 +62,9 @@ fun SensorStatusCard(
             SensorState.CONNECTING -> if (isDark) SensorColors.connectingDark else SensorColors.connectingLight
             SensorState.CONNECTED -> if (isDark) SensorColors.activeDark else SensorColors.activeLight
             SensorState.STREAMING -> if (isDark) SensorColors.activeDark else SensorColors.activeLight
+            SensorState.MEASURING -> if (isDark) SensorColors.activeDark else SensorColors.activeLight
+            SensorState.PAUSED -> SensorColors.pausedAmber
+            SensorState.STOPPED -> SensorColors.idleGrey
         },
         animationSpec = tween(durationMillis = 400),
         label = "indicatorColor"
@@ -69,7 +72,7 @@ fun SensorStatusCard(
 
     // Animated border alpha for streaming emphasis
     val borderAlpha by animateFloatAsState(
-        targetValue = if (state == SensorState.STREAMING) 1f else 0.3f,
+        targetValue = if (state == SensorState.STREAMING || state == SensorState.MEASURING) 1f else 0.3f,
         animationSpec = tween(durationMillis = 300),
         label = "borderAlpha"
     )
@@ -79,6 +82,9 @@ fun SensorStatusCard(
         SensorState.CONNECTING -> Icons.Default.Bluetooth
         SensorState.CONNECTED -> Icons.Default.BluetoothConnected
         SensorState.STREAMING -> Icons.Default.BluetoothConnected
+        SensorState.MEASURING -> Icons.Default.BluetoothConnected
+        SensorState.PAUSED -> Icons.Default.Bluetooth
+        SensorState.STOPPED -> Icons.Default.Sensors
     }
 
     val statusText = when (state) {
@@ -86,6 +92,9 @@ fun SensorStatusCard(
         SensorState.CONNECTING -> "Connecting…"
         SensorState.CONNECTED -> "Connected"
         SensorState.STREAMING -> "Streaming"
+        SensorState.MEASURING -> "Measuring"
+        SensorState.PAUSED -> "Paused"
+        SensorState.STOPPED -> "Stopped"
     }
 
     Card(
