@@ -18,6 +18,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
@@ -99,18 +101,27 @@ fun SensorStatusCard(
 
     Card(
         modifier = modifier
-            .width(160.dp)
+            .width(152.dp)
             .clickable { onClick() },
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+            containerColor = MaterialTheme.colorScheme.surfaceVariant
         ),
         shape = MaterialTheme.shapes.medium,
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(12.dp),
+                .drawBehind {
+                    // Colored left accent border
+                    drawLine(
+                        color = accentColor,
+                        start = Offset(0f, 0f),
+                        end = Offset(0f, size.height),
+                        strokeWidth = 3.dp.toPx()
+                    )
+                }
+                .padding(start = 14.dp, end = 12.dp, top = 12.dp, bottom = 12.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             // Top row: icon + name
