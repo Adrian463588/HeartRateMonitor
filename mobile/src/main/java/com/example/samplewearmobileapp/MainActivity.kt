@@ -1387,12 +1387,35 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
                         when (sensorId) {
                             "POLAR" -> {
                                 if (!isPolarDeviceConnected) connectPolarDevice()
+                                isEcgVisible = !isEcgVisible
                             }
-                            "PPG_GREEN" -> togglePpgTracker(PpgType.PPG_GREEN)
-                            "PPG_IR" -> togglePpgTracker(PpgType.PPG_IR)
-                            "PPG_RED" -> togglePpgTracker(PpgType.PPG_RED)
+                            "PPG_GREEN" -> {
+                                togglePpgTracker(PpgType.PPG_GREEN)
+                                isPpgGreenVisible = !isPpgGreenVisible
+                            }
+                            "PPG_IR" -> {
+                                togglePpgTracker(PpgType.PPG_IR)
+                                isPpgIrVisible = !isPpgIrVisible
+                            }
+                            "PPG_RED" -> {
+                                togglePpgTracker(PpgType.PPG_RED)
+                                isPpgRedVisible = !isPpgRedVisible
+                            }
                         }
+                        setPlotVisibility()
                         syncDashboard()
+                        // Scroll to the target graph
+                        val scrollView = binding.plotContainer
+                        val targetPlot = when (sensorId) {
+                            "POLAR" -> binding.ecgPlot
+                            "PPG_GREEN" -> binding.ppgGreenPlot
+                            "PPG_IR" -> binding.ppgIrPlot
+                            "PPG_RED" -> binding.ppgRedPlot
+                            else -> null
+                        }
+                        targetPlot?.let { plot ->
+                            scrollView.post { scrollView.smoothScrollTo(0, plot.top) }
+                        }
                     }
                 )
 
@@ -1449,8 +1472,11 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
     private fun deriveSensorState(isRunning: Boolean): SensorState {
         return when {
             connectedNode.isNullOrEmpty() -> SensorState.DISCONNECTED
+            isPaused -> SensorState.PAUSED
+            isRunning && isRecording -> SensorState.MEASURING
             isRunning -> SensorState.STREAMING
-            else -> SensorState.CONNECTED
+            isRecording -> SensorState.CONNECTED
+            else -> SensorState.STOPPED
         }
     }
 
@@ -2620,57 +2646,63 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
             PpgType.PPG_GREEN -> {
                 if (forceState != null) {
                     isPpgGreenRunning = forceState
-                    return
+                } else {
+                    isPpgGreenRunning = !isPpgGreenRunning
                 }
-                isPpgGreenRunning = !isPpgGreenRunning
 
                 if (isPpgGreenRunning) {
                     runOnUiThread {
                         textPpgGreenStatus.text = getString(R.string.ppg_green_status,
                             getString(R.string.status_running))
+                        syncDashboard()
                     }
                 } else {
                     runOnUiThread {
                         textPpgGreenStatus.text = getString(R.string.ppg_green_status,
                             getString(R.string.status_stopped))
+                        syncDashboard()
                     }
                 }
             }
             PpgType.PPG_IR -> {
                 if (forceState != null) {
                     isPpgIrRunning = forceState
-                    return
+                } else {
+                    isPpgIrRunning = !isPpgIrRunning
                 }
-                isPpgIrRunning = !isPpgIrRunning
 
                 if (isPpgIrRunning) {
                     runOnUiThread {
                         textPpgIrStatus.text = getString(R.string.ppg_ir_status,
                             getString(R.string.status_running))
+                        syncDashboard()
                     }
                 } else {
                     runOnUiThread {
                         textPpgIrStatus.text = getString(R.string.ppg_ir_status,
                             getString(R.string.status_stopped))
+                        syncDashboard()
                     }
                 }
             }
             PpgType.PPG_RED -> {
                 if (forceState != null) {
                     isPpgRedRunning = forceState
-                    return
+                } else {
+                    isPpgRedRunning = !isPpgRedRunning
                 }
-                isPpgRedRunning = !isPpgRedRunning
 
                 if (isPpgRedRunning) {
                     runOnUiThread {
                         textPpgRedStatus.text = getString(R.string.ppg_red_status,
                             getString(R.string.status_running))
+                        syncDashboard()
                     }
                 } else {
                     runOnUiThread {
                         textPpgRedStatus.text = getString(R.string.ppg_red_status,
                             getString(R.string.status_stopped))
+                        syncDashboard()
                     }
                 }
             }
@@ -2690,6 +2722,9 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
         runOnUiThread {
             when (appState) {
                 0, ActivityCode.STOP_ACTIVITY -> {
+                    isPpgGreenRunning = false
+                    isPpgIrRunning = false
+                    isPpgRedRunning = false
                     textPpgGreenStatus.text = getString(R.string.ppg_green_status,
                         getString(R.string.status_stopped))
                     textPpgIrStatus.text = getString(R.string.ppg_ir_status,
@@ -2698,6 +2733,9 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
                         getString(R.string.status_stopped))
                 }
                 1 -> {
+                    isPpgGreenRunning = true
+                    isPpgIrRunning = true
+                    isPpgRedRunning = true
                     textPpgGreenStatus.text = getString(R.string.ppg_green_status,
                         getString(R.string.status_running))
                     textPpgIrStatus.text = getString(R.string.ppg_ir_status,
@@ -2714,6 +2752,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
                         getString(R.string.status_paused))
                 }
             }
+            syncDashboard()
         }
         Log.d(TAG,"stateNum changed to: $appState")
     }
