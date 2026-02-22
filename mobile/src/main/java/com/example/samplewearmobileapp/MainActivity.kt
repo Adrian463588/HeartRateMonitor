@@ -1384,27 +1384,19 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
                         Log.d(TAG, "Event marker: $label at ${System.currentTimeMillis()}")
                     },
                     onSensorClick = { sensorId ->
+                        // Show the graph — never toggle tracker on the watch
                         when (sensorId) {
                             "POLAR" -> {
                                 if (!isPolarDeviceConnected) connectPolarDevice()
-                                isEcgVisible = !isEcgVisible
+                                isEcgVisible = true
                             }
-                            "PPG_GREEN" -> {
-                                togglePpgTracker(PpgType.PPG_GREEN)
-                                isPpgGreenVisible = !isPpgGreenVisible
-                            }
-                            "PPG_IR" -> {
-                                togglePpgTracker(PpgType.PPG_IR)
-                                isPpgIrVisible = !isPpgIrVisible
-                            }
-                            "PPG_RED" -> {
-                                togglePpgTracker(PpgType.PPG_RED)
-                                isPpgRedVisible = !isPpgRedVisible
-                            }
+                            "PPG_GREEN" -> isPpgGreenVisible = true
+                            "PPG_IR" -> isPpgIrVisible = true
+                            "PPG_RED" -> isPpgRedVisible = true
                         }
                         setPlotVisibility()
                         syncDashboard()
-                        // Scroll to the target graph
+                        // Scroll to the target graph (visibility already set)
                         val scrollView = binding.plotContainer
                         val targetPlot = when (sensorId) {
                             "POLAR" -> binding.ecgPlot
