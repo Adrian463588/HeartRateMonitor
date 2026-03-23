@@ -45,7 +45,6 @@ class MainService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val message = intent?.getStringExtra("message")
         createNotificationChannel()
-//        val notificationIntent = Intent(this, MainActivity::class.java)
 
         val pendingIntent: PendingIntent =
             Intent(this, MainActivity::class.java).let { notificationIntent ->

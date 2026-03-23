@@ -47,7 +47,6 @@ class HeartRateListener internal constructor() : Listener() {
         hrData.qIbi = hrIbi shr HeartRateData.IBI_QUALITY_SHIFT and HeartRateData.IBI_QUALITY_MASK
         hrData.ibi = hrIbi and HeartRateData.IBI_MASK
 
-//        TrackerDataNotifier.instance?.notifyHeartRateTrackerObservers(hrData)
         Log.d(tag, dataPoint.toString())
     }
 }

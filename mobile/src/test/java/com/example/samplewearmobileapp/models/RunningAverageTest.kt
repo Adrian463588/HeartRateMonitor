@@ -110,4 +110,41 @@ class RunningAverageTest {
         avg.add(-30.0)
         assertEquals(-20.0, avg.average(), 0.0001)
     }
+
+    // --- extended edge cases ---
+
+    @Test
+    fun `handles large number of adds correctly`() {
+        val largeAvg = RunningAverage(5)
+        for (i in 1..100) largeAvg.add(i.toDouble())
+        // Window should contain [96, 97, 98, 99, 100]
+        assertEquals(98.0, largeAvg.average(), 0.0001)
+        assertEquals(5, largeAvg.size())
+    }
+
+    @Test
+    fun `handles zero values`() {
+        avg.add(0.0)
+        avg.add(0.0)
+        avg.add(0.0)
+        assertEquals(0.0, avg.average(), 0.0001)
+    }
+
+    @Test
+    fun `handles mixed positive and negative values`() {
+        avg.add(10.0)
+        avg.add(-10.0)
+        avg.add(5.0)
+        assertEquals(5.0 / 3.0, avg.average(), 0.0001)
+    }
+
+    @Test
+    fun `sum is updated correctly after overflow`() {
+        avg.add(100.0)
+        avg.add(200.0)
+        avg.add(300.0)
+        avg.add(400.0) // evicts 100
+        avg.add(500.0) // evicts 200
+        assertEquals(1200.0, avg.sum(), 0.0001) // 300+400+500
+    }
 }

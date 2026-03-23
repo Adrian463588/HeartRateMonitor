@@ -195,26 +195,4 @@ object AppUtils {
             "Landscape"
         }
     }
-
-//    /**
-//     * Utility method to get an info string listing all the keys,value pairs
-//     * in the given SharedPreferences.
-//     *
-//     * @param prefix String with text to prepend to each line, e.g. "    ".
-//     * @param prefs  The given Preferences.
-//     * @return The info/
-//     */
-//    fun getSharedPreferencesInfo(
-//        prefix: String?,
-//        prefs: SharedPreferences
-//    ): String? {
-//        val map = prefs.all
-//        val sb = StringBuilder()
-//        for ((key, value1): Map.Entry<String, *> in map) {
-//            val value = value1!!
-//            sb.append(prefix).append("key=").append(key)
-//                .append(" value=").append(value).append("\n")
-//        }
-//        return sb.toString()
-//    }
 }
