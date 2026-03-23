@@ -458,14 +458,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
         this@MainActivity.menu = menu
         menuInflater.inflate(R.menu.main_menu, menu)
-        if (polarApi == null) {
-            menu.findItem(R.id.pause).title = "Start"
-            menu.findItem(R.id.pause).icon = ResourcesCompat.getDrawable(
-                resources, R.drawable.ic_play_arrow_white_36dp, null
-            )
-            menu.findItem(R.id.stop_recording).isVisible = false
-            menu.findItem(R.id.save).isVisible = false
-        } else if (isRecording && !isPaused) {
+        if (isRecording && !isPaused) {
             menu.findItem(R.id.pause).icon = ResourcesCompat.getDrawable(
                 resources, R.drawable.ic_pause_white_36dp, null
             )
@@ -493,9 +486,6 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         val id = item.itemId
         if (id == R.id.pause) {
-            if (polarApi == null) {
-                return true
-            }
             if (!isRecording) {
                 // === START RECORDING ===
                 MobileService.startService(this, "Start recording...")
@@ -521,7 +511,8 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
                 ecgPlotter?.clear()
                 qrsPlotter?.clear()
                 hrPlotter?.clear()
-                if (ecgDisposable == null) {
+                // Start ECG stream only if Polar device is connected
+                if (isPolarDeviceConnected && ecgDisposable == null) {
                     toggleEcgStream()
                     isEcgRunning = true
                 }
@@ -1247,6 +1238,10 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
             ).show()
         } else {
             setupPolar()
+            // Auto-connect after setup if API is ready but device not connected
+            if (polarApi != null && !isPolarDeviceConnected) {
+                connectPolarDevice()
+            }
         }
     }
 
@@ -1269,9 +1264,11 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
     override fun onRestart() {
         super.onRestart()
         Log.i(TAG,"Lifecycle: onRestart()")
-        // re-register bluetooth state receiver
-        registerReceiver(bluetoothStateReceiver, BluetoothService.BLUETOOTH_STATE_FILTER)
-        isBluetoothReceiverRegistered = true
+        // re-register bluetooth state receiver (guard against duplicate registration)
+        if (!isBluetoothReceiverRegistered) {
+            registerReceiver(bluetoothStateReceiver, BluetoothService.BLUETOOTH_STATE_FILTER)
+            isBluetoothReceiverRegistered = true
+        }
     }
 
     override fun onStop() {
@@ -2086,7 +2083,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
     private fun chooseDataDirectory() {
         val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)
         intent.addFlags(
-            Intent.FLAG_GRANT_READ_URI_PERMISSION and
+            Intent.FLAG_GRANT_READ_URI_PERMISSION or
                     Intent.FLAG_GRANT_WRITE_URI_PERMISSION
         )
         openDocumentTreeLauncher.launch(intent)
@@ -2189,7 +2186,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
         )
         if (connectedNode.isNullOrEmpty()) {
             AppUtils.errMsg(this,
-                "togglePpgTracker: Wear Device is not connected yet")
+                "Samsung Watch is not connected. Please ensure watch is paired and connected.")
             return
         }
 
@@ -2397,32 +2394,27 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
     }
 
     private fun onMessageArrived(messagePath: String) {
-        wearMessage?.let {
-            when (messagePath) {
-                MessagePath.COMMAND -> {
-                    if (it.code == ActivityCode.STOP_ACTIVITY) { // reset this module's state
-                        toggleState(0)
-                    }
+        val message = wearMessage ?: return
+        when (messagePath) {
+            MessagePath.COMMAND -> {
+                if (message.code == ActivityCode.STOP_ACTIVITY) {
+                    toggleState(0)
                 }
-                MessagePath.REQUEST -> {
-                    TODO("Not yet implemented")
+            }
+            MessagePath.REQUEST -> {
+                Log.d(TAG, "Received REQUEST message from wear: ${message.content}")
+            }
+            MessagePath.INFO -> {
+                when (message.code) {
+                    ActivityCode.START_ACTIVITY -> toggleState(1)
+                    ActivityCode.STOP_ACTIVITY -> toggleState(0)
+                    ActivityCode.PAUSE_ACTIVITY -> toggleState(ActivityCode.PAUSE_ACTIVITY)
+                    ActivityCode.DO_NOTHING -> toggleState(0)
+                    else -> Log.d(TAG, "Unknown activity code: ${message.code}")
                 }
-                MessagePath.INFO -> {
-                    when (it.code) {
-                        ActivityCode.START_ACTIVITY -> { // Wear is running
-                            toggleState(1)
-                        }
-                        ActivityCode.STOP_ACTIVITY -> { // Wear stopped
-                            toggleState(0)
-                        }
-                        ActivityCode.PAUSE_ACTIVITY -> { // Wear paused
-                            toggleState(ActivityCode.PAUSE_ACTIVITY)
-                        }
-                        ActivityCode.DO_NOTHING -> {
-                            toggleState(0)
-                        }
-                    }
-                }
+            }
+            else -> {
+                Log.d(TAG, "Unknown message path: $messagePath")
             }
         }
     }
@@ -2609,23 +2601,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
                 .append(ecgPlotter!!.getVisibleSeries().getyVals().size)
                 .append("\n")
         }
-        var versionName: String? = "NA"
-        try {
-            versionName = if (Build.VERSION.SDK_INT >= 33) {
-                packageManager.getPackageInfo(
-                    packageName,
-                    PackageManager.PackageInfoFlags.of(0)
-                ).versionName
-            } else {
-                packageManager.getPackageInfo(
-                    packageName,
-                    0
-                ).versionName
-            }
-        } catch (ex: java.lang.Exception) {
-            // Do nothing
-        }
-        msg.append("ECG-App Version: ").append(versionName).append("\n")
+        msg.append("ECG-App Version: ").append(AppUtils.getVersion(this)).append("\n")
         msg.append("Polar BLE API Version: ").append(versionInfo()).append("\n")
         msg.append(UriUtils.getRequestedPermissionsInfo(this))
         val prefs = getPreferences(MODE_PRIVATE)

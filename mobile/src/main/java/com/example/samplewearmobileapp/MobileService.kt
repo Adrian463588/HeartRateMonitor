@@ -11,32 +11,33 @@ import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 
+/**
+ * Foreground service that keeps the app alive while recording
+ * sensor data. Shows a persistent notification during recording.
+ */
 class MobileService : Service() {
     private val CHANNEL_ID = "MobileService"
-    private var isServiceRunning = false
 
     companion object {
+        /**
+         * Tracks whether the service is currently running.
+         * Set in [onStartCommand] and cleared in [onDestroy].
+         */
+        @Volatile
+        private var isRunning = false
+
         fun startService(context: Context, message: String) {
             val intent = Intent(context, MobileService::class.java)
             intent.putExtra("message", message)
             ContextCompat.startForegroundService(context, intent)
-
-            val service = ContextCompat.getSystemService(context, MobileService::class.java)
-            service?.isServiceRunning = true
         }
 
         fun stopService(context: Context) {
-            val service = ContextCompat.getSystemService(context, MobileService::class.java)
-            service?.isServiceRunning = false
-
             val intent = Intent(context, MobileService::class.java)
             context.stopService(intent)
         }
 
-        fun isServiceRunning(context: Context) : Boolean {
-            val service = ContextCompat.getSystemService(context, MobileService::class.java)
-            return service?.isServiceRunning() ?: false
-        }
+        fun isServiceRunning(): Boolean = isRunning
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -58,8 +59,13 @@ class MobileService : Service() {
             .build()
 
         startForeground(1, notification)
-        isServiceRunning = true
+        isRunning = true
         return START_STICKY
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        isRunning = false
     }
 
     override fun onBind(intent: Intent?): IBinder? {
@@ -77,9 +83,5 @@ class MobileService : Service() {
 
         val manager = getSystemService(NotificationManager::class.java)
         manager?.createNotificationChannel(serviceChannel)
-    }
-
-    private fun isServiceRunning() : Boolean {
-        return isServiceRunning
     }
 }
