@@ -36,10 +36,16 @@ class SettingsActivity : AppCompatActivity() {
         return super.onOptionsItemSelected(item)
     }
 
+    override fun onPause() {
+        super.onPause()
+        // Dismiss any pending tooltip popups to prevent WindowLeaked
+        window.decorView.cancelPendingInputEvents()
+    }
+
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
         setResult(RESULT_OK)
-        finish()
+        super.onBackPressed()
     }
 
     class SettingsFragment : PreferenceFragmentCompat() {
