@@ -147,9 +147,6 @@ class EcgPlotter: PlotterListener {
             plot.setDomainStep(StepMode.INCREMENT_BY_VAL, .2 * N_LARGE)
             plot.linesPerDomainLabel = 5
 
-//        // Allow panning
-//        PanZoom.attach(mPlot, PanZoom.Pan.HORIZONTAL, PanZoom.Zoom.NONE);
-
             // Update the plot
             update()
         } catch (ex: Exception) {

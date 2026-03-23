@@ -93,4 +93,40 @@ class AppUtilsTest {
         assertEquals(8, hash!!.length)
         assertTrue(hash.all { it in '0'..'9' || it in 'A'..'F' })
     }
+
+    // --- extended edge cases ---
+
+    @Test
+    fun `getExtension with path separators`() {
+        assertEquals("txt", AppUtils.getExtension(File("/path/to/file.txt")))
+    }
+
+    @Test
+    fun `getExtension with windows path separators`() {
+        assertEquals("csv", AppUtils.getExtension(File("C:\\data\\output.csv")))
+    }
+
+    @Test
+    fun `getHashCode with integer`() {
+        val hash = AppUtils.getHashCode(42)
+        assertNotNull(hash)
+        assertEquals(8, hash!!.length)
+    }
+
+    @Test
+    fun `getHashCode with empty string`() {
+        val hash = AppUtils.getHashCode("")
+        assertNotNull(hash)
+        assertEquals(8, hash!!.length)
+    }
+
+    @Test
+    fun `getStackTraceString with nested cause`() {
+        val cause = IllegalStateException("root cause")
+        val ex = RuntimeException("wrapper", cause)
+        val trace = AppUtils.getStackTraceString(ex)
+        assertNotNull(trace)
+        assertTrue(trace!!.contains("root cause"))
+        assertTrue(trace.contains("wrapper"))
+    }
 }

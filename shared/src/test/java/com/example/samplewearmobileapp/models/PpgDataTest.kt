@@ -36,6 +36,15 @@ class PpgDataTest {
     }
 
     @Test
+    fun `clear sets size to zero exactly once`() {
+        // Regression test: size = 0 must be outside the loop
+        val data = PpgData(100, PpgType.PPG_GREEN)
+        data.size = 50
+        data.clear()
+        assertEquals(0, data.size)
+    }
+
+    @Test
     fun `clear on already empty data has no effect`() {
         val data = PpgData(2, PpgType.PPG_RED)
         data.clear()

@@ -118,4 +118,32 @@ class FixedSizeListTest {
         assertEquals(0, list.size)
         assertTrue(list.isEmpty())
     }
+
+    // --- extended edge cases ---
+
+    @Test
+    fun `setLast on single element replaces it`() {
+        list.add(10)
+        list.setLast(99)
+        assertEquals(listOf(99), list.toList())
+    }
+
+    @Test
+    fun `iteration order is maintained`() {
+        list.add(1)
+        list.add(2)
+        list.add(3)
+        val collected = mutableListOf<Int>()
+        for (item in list) collected.add(item)
+        assertEquals(listOf(1, 2, 3), collected)
+    }
+
+    @Test
+    fun `first and last return correct values`() {
+        list.add(10)
+        list.add(20)
+        list.add(30)
+        assertEquals(10, list.first)
+        assertEquals(30, list.last)
+    }
 }

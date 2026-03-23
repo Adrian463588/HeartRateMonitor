@@ -188,8 +188,6 @@ class HrPlotter: PlotterListener {
                 }
             }
 
-//            // Allow panning
-//            PanZoom.attach(mPlot, PanZoom.Pan.HORIZONTAL, PanZoom.Zoom.NONE);
             update()
         } catch (ex: Exception) {
             val msg = """Error in HrPlotter.setupPlot:
@@ -207,15 +205,6 @@ class HrPlotter: PlotterListener {
 //                mHrSeries1.size());
         if (plotHr1 || plotRr1) {
             hrRrList1.add(HrRrSessionData(time, hr, rrsMs))
-            //            StringBuilder sb = new StringBuilder();
-//            sb.append("HRPlotter: addValues1");
-//            sb.append(" time=");
-//            sb.append(X_AXIS_DATE_FORMAT.format(new Date(Math.round(time))));
-//            sb.append(" hr=").append(Math.round(hr)).append(" rr=");
-//            for (int rr : rrsMs) {
-//                sb.append(rr).append(" ");
-//            }
-//            Log.d(TAG, sb.toString());
             if (java.lang.Double.isNaN(startTime)) startTime = time
             if (java.lang.Double.isNaN(lastTime)) {
                 lastTime = time
@@ -255,10 +244,6 @@ class HrPlotter: PlotterListener {
                 totalRrTime = 0.0
             }
             totalRrTime += totalRr
-            //        Log.d(TAG, "lastRrTime=" + mLastRrTime
-//                + " totalRR=" + totalRR
-//                + " elapsed=" + (mLastRrTime - mStartRrTime)
-//                + " totalRrTime=" + mTotalRrTime);
             var rr: Double
             var t = lastRrTime
             for (i in 0 until rrValuesCount) {
@@ -299,11 +284,6 @@ class HrPlotter: PlotterListener {
 //                + RR_SCALE * rr);
         if (plotHr2 || plotRr2) {
             hrRrList2.add(HrRrSessionData(time, hr, rr))
-            //            Log.d(TAG, "HRPlotter: addValues2"
-//                    + " time=" + X_AXIS_DATE_FORMAT.format(new Date(Math
-//                    .round(time)))
-//                    + " hr=" + Math.round(hr)
-//                    + " rr=" + Math.round(rr));
             if (java.lang.Double.isNaN(startTime)) startTime = time
             if (java.lang.Double.isNaN(lastTime)) {
                 lastTime = time
@@ -321,22 +301,9 @@ class HrPlotter: PlotterListener {
         }
     }
 
-//    public String getRrInfo() {
-//        double elapsed = MS_TO_SEC * (mLastRrTime - mStartRrTime);
-//        double total = MS_TO_SEC * mTotalRrTime;
-//        double ratio = total / elapsed;
-//        return "Tot=" + String.format(Locale.US, "%.2f s", elapsed)
-//                + " RR=" + String.format(Locale.US, "%.2f s", total)
-//                + " (" + String.format(Locale.US, "%.2f", ratio) + ")";
-//    }
-
     private fun updateDomainRangeBoundaries() {
         var max: Double = runningMax1.max().coerceAtLeast(runningMax2.max())
         if (java.lang.Double.isNaN(max) || max < 60) max = 60.0
-//        Log.d(TAG, this.getClass().getSimpleName() +
-//        "updateDomainRangeBoundaries: startTime="
-//                + startTime + " lastTime=" + lastTime
-//                + " max=" + max);
         if (!java.lang.Double.isNaN(lastTime) && !java.lang.Double.isNaN(startTime)) {
             if (lastTime - startTime > HR_PLOT_DOMAIN_INTERVAL) {
                 plot.setDomainBoundaries(
@@ -357,18 +324,12 @@ class HrPlotter: PlotterListener {
         }
         val upperBoundary: Number = ceil(max + 10).coerceAtMost(200.0)
         plot.setRangeBoundaries(0, upperBoundary, BoundaryMode.FIXED)
-//        RectRegion rgn= mPlot.getOuterLimits();
-//        Log.d(TAG,"OuterLimits="  + rgn.getMinX() + "," + rgn.getMaxX());
-//        mPlot.getOuterLimits().set(mStartTime, mLastTime,
-//                0, Math.ceil(max + 10));
     }
 
     /**
      * Updates the plot. Runs on the UI thread.
      */
     override fun update() {
-//        Log.d(TAG, "HRPlotter: update: dataList sizes=" + mHrRrList1.size()
-//                + "," + mHrRrList2.size());
         parentActivity.runOnUiThread { plot.redraw() }
     }
 

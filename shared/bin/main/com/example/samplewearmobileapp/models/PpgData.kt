@@ -15,7 +15,6 @@ package com.example.samplewearmobileapp.models
  * @see PpgType
  */
 data class PpgData(
-//    var number: Int,
     var ppgValues : IntArray,
     var timestamps : LongArray,
     var ppgType: PpgType,
@@ -36,8 +35,8 @@ data class PpgData(
         for (i in 0 until windowSize) {
             ppgValues[i] = 0
             timestamps[i] = 0
-            size = 0
         }
+        size = 0
     }
 
     override fun equals(other: Any?): Boolean {

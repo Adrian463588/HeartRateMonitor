@@ -109,4 +109,42 @@ class RunningMaxTest {
         assertEquals(15.0, single.max(), 0.0001)
         assertEquals(15.0, single.min(), 0.0001)
     }
+
+    // --- extended edge cases ---
+
+    @Test
+    fun `all identical values`() {
+        rm.add(42.0)
+        rm.add(42.0)
+        rm.add(42.0)
+        assertEquals(42.0, rm.max(), 0.0001)
+        assertEquals(42.0, rm.min(), 0.0001)
+    }
+
+    @Test
+    fun `zero values`() {
+        rm.add(0.0)
+        rm.add(0.0)
+        assertEquals(0.0, rm.max(), 0.0001)
+        assertEquals(0.0, rm.min(), 0.0001)
+    }
+
+    @Test
+    fun `alternating high low pattern`() {
+        rm.add(100.0)
+        rm.add(1.0)
+        rm.add(100.0)
+        assertEquals(100.0, rm.max(), 0.0001)
+        assertEquals(1.0, rm.min(), 0.0001)
+    }
+
+    @Test
+    fun `large number of adds maintains correctness`() {
+        val bigRm = RunningMax(5)
+        for (i in 1..50) bigRm.add(i.toDouble())
+        // Window: [46, 47, 48, 49, 50]
+        assertEquals(50.0, bigRm.max(), 0.0001)
+        assertEquals(46.0, bigRm.min(), 0.0001)
+        assertEquals(5, bigRm.size())
+    }
 }
