@@ -2,10 +2,35 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.example.samplewearmobileapp">
 
+    <!-- Core sensor + wake permissions -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
-    <uses-permission android:name="android.permission.BODY_SENSORS"/>
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
-    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"/>
+    <uses-permission android:name="android.permission.BODY_SENSORS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+
+    <!--
+        API 33+ (Android 13 / One UI 6): required for continuous background
+        sensor access when the watch screen is off.
+    -->
+    <uses-permission
+        android:name="android.permission.BODY_SENSORS_BACKGROUND"
+        android:minSdkVersion="33" />
+
+    <!--
+        Required by Samsung Health Sensor SDK v1.4+ for activity-based
+        triggers and step detection on One UI 6.
+    -->
+    <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
+
+    <!--
+        API 34+ (Android 14): foreground service type enforcement.
+        Required when declaring foregroundServiceType="health" in the service.
+    -->
+    <uses-permission
+        android:name="android.permission.FOREGROUND_SERVICE_HEALTH"
+        android:minSdkVersion="34" />
+
+    <!-- Battery optimisation bypass for continuous long-running recordings -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <uses-feature android:name="android.hardware.type.watch" />
 
@@ -15,13 +40,14 @@
         android:label="@string/app_name"
         android:supportsRtl="true"
         android:theme="@android:style/Theme.DeviceDefault">
+
         <uses-library
             android:name="com.google.android.wearable"
             android:required="true" />
 
         <!--
-               Set to true if your app is Standalone, that is, it does not require the handheld
-               app to run.
+            standalone=false: this wear app is paired with the mobile module
+            and relies on the phone for Polar ECG data.
         -->
         <meta-data
             android:name="com.google.android.wearable.standalone"
@@ -32,10 +58,19 @@
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
-
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!--
+            foregroundServiceType="health" is required on API 34+ for
+            foreground services that access health/sensor data.
+        -->
+        <service
+            android:name=".MainService"
+            android:foregroundServiceType="health"
+            android:exported="false" />
+
     </application>
 
 </manifest>

@@ -56,4 +56,12 @@
     <string name="SdkPolicyError">SDK Policy denied</string>
     <string name="HealthPlatformVersionIsOutdated">Health Platform is outdated or not installed</string>
     <string name="ConnectionError">Could not connect to Health Tracking Service. Check error log.</string>
+
+    <!-- Foreground service notification -->
+    <string name="notification_tracking">Tracking sensor data…</string>
+
+    <!-- Permission UX messages -->
+    <string name="permission_rationale">Body sensor access is required to record PPG data. Please grant the permission when prompted.</string>
+    <string name="permission_settings_guide">Background sensor access is required. Please enable "Body sensors → Allow all the time" in Settings.</string>
+
 </resources>

@@ -83,7 +83,9 @@
     <string name="settings_item">Settings</string>
     <string name="help_item">Help</string>
     <string name="stop_recording_item">Stop Recording</string>
-    <string name="elapsed_time_formatted">%1$02d:%2$02d</string>
+    <!-- Live recording timer: MM:SS.mmm -->
+    <string name="elapsed_time_formatted">%1$02d:%2$02d.%3$03d</string>
+    <string name="recording_timer_label">REC ⏱</string>
 
     <string name="button_ppg_green">PPG Green</string>
     <string name="button_ppg_ir">PPG IR</string>
