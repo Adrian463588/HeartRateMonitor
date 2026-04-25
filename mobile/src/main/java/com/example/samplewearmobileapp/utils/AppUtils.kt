@@ -25,12 +25,7 @@ object AppUtils {
      */
     private fun alert(context: Context, title: String, msg: String) {
         try {
-            val alertDialog = AlertDialog.Builder(
-                ContextThemeWrapper(
-                    context,
-                    R.style.InverseTheme
-                )
-            )
+            val alertDialog = AlertDialog.Builder(context)
                 .setTitle(title)
                 .setMessage(msg)
                 .setPositiveButton(
