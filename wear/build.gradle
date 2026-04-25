@@ -5,15 +5,23 @@ plugins {
 
 android {
     namespace 'com.example.samplewearmobileapp'
-    compileSdk 32
+    compileSdk 34
 
     defaultConfig {
         applicationId "com.example.samplewearmobileapp"
         minSdk 30
-        targetSdk 32
+        targetSdk 34
         versionCode 1
         versionName "1.0"
+    }
 
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+
+    kotlinOptions {
+        jvmTarget = '1.8'
     }
 
     buildTypes {
@@ -22,34 +30,43 @@ android {
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
+
     buildFeatures {
         viewBinding true
     }
+
     testOptions {
         unitTests.returnDefaultValues = true
     }
 }
 
 dependencies {
-    // default implementations
-    implementation 'androidx.core:core-ktx:1.7.0'
+    // AndroidX Core
+    implementation 'androidx.core:core-ktx:1.12.0'
     implementation 'androidx.percentlayout:percentlayout:1.0.0'
     implementation 'androidx.legacy:legacy-support-v4:1.0.0'
-    implementation 'androidx.recyclerview:recyclerview:1.2.1'
-    implementation 'androidx.wear:wear:1.2.0'
+    implementation 'androidx.recyclerview:recyclerview:1.3.2'
+    implementation 'androidx.wear:wear:1.3.0'
+    implementation 'androidx.fragment:fragment-ktx:1.6.2'
 
-    // Samsung SDK
+    // Samsung Health Sensor SDK v1.4.1 (Wear OS 5 / One UI 6 compatible)
     implementation fileTree(dir: 'libs', include: '*.aar')
 
-    // implement shared module
+    // Shared module
     implementation project(path: ':shared')
 
-    // wearables API
-    implementation 'com.google.android.gms:play-services-wearable:11.6.0'
+    // Wearable Data Layer API (modern Task-based, replaces deprecated GoogleApiClient)
+    implementation 'com.google.android.gms:play-services-wearable:19.0.0'
 
-    // Gson
-    implementation 'com.google.code.gson:gson:2.8.2'
+    // Kotlin Coroutines + Play Services bridge (.await() for Task<T>)
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3'
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.7.3'
 
-    // Test
+    // JSON serialization
+    implementation 'com.google.code.gson:gson:2.10.1'
+
+    // Unit testing
     testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.mockito:mockito-core:5.7.0'
+    testImplementation 'org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3'
 }

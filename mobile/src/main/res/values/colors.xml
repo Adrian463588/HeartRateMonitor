@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- Brand palette -->
     <color name="purple_200">#FFBB86FC</color>
     <color name="purple_500">#FF6200EE</color>
     <color name="purple_700">#FF3700B3</color>
@@ -7,4 +8,15 @@
     <color name="teal_700">#FF018786</color>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+
+    <!--
+        Semantic dialog tokens — Light Mode.
+        DRY: referenced by AppAlertDialogTheme and DialogButtonStyle only.
+        Overridden in values-night/colors.xml for Dark Mode.
+    -->
+    <color name="dialog_background">#FFFFFFFF</color>
+    <color name="dialog_text">#DE000000</color>
+    <color name="dialog_hint">#99000000</color>
+    <color name="dialog_button">#FF6200EE</color>
+    <color name="dialog_input_text">#FF000000</color>
 </resources>

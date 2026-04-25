@@ -1,7 +1,6 @@
 ﻿To honour the JVM settings for this build a single-use Daemon process will be forked. See https://docs.gradle.org/7.4/userguide/gradle_daemon.html#sec:disabling_the_daemon.
 Daemon will be stopped at the end of the build 
 > Task :shared:processResources NO-SOURCE
-> Task :shared:processTestResources NO-SOURCE
 > Task :mobile:preBuild UP-TO-DATE
 > Task :mobile:preDebugBuild UP-TO-DATE
 > Task :mobile:compileDebugAidl NO-SOURCE
@@ -9,15 +8,15 @@ Daemon will be stopped at the end of the build
 > Task :mobile:dataBindingMergeDependencyArtifactsDebug UP-TO-DATE
 > Task :mobile:generateDebugResValues UP-TO-DATE
 > Task :mobile:generateDebugResources UP-TO-DATE
-> Task :mobile:mergeDebugResources UP-TO-DATE
-> Task :mobile:packageDebugResources UP-TO-DATE
-> Task :mobile:parseDebugLocalResources UP-TO-DATE
-> Task :mobile:dataBindingGenBaseClassesDebug UP-TO-DATE
+> Task :mobile:packageDebugResources
 > Task :mobile:generateDebugBuildConfig UP-TO-DATE
 > Task :mobile:checkDebugAarMetadata UP-TO-DATE
 > Task :mobile:mapDebugSourceSetPaths UP-TO-DATE
 > Task :mobile:createDebugCompatibleScreenManifests UP-TO-DATE
 > Task :mobile:extractDeepLinksDebug UP-TO-DATE
+> Task :mobile:mergeDebugResources
+> Task :mobile:parseDebugLocalResources
+> Task :shared:compileKotlin
 
 > Task :mobile:processDebugMainManifest
 package="com.example.samplewearmobileapp" found in source AndroidManifest.xml: D:\SEMESTER12\SkripiDump\4_HeartMonitor\mobile\src\main\AndroidManifest.xml.
@@ -25,6 +24,10 @@ Setting the namespace via a source AndroidManifest.xml's package attribute is de
 Please instead set the namespace (or testNamespace) in the module's build.gradle file, as described here: https://developer.android.com/studio/build/configure-app-module#set-namespace
 This migration can be done automatically using the AGP Upgrade Assistant, please refer to https://developer.android.com/studio/build/agp-upgrade-assistant for more information.
 
+> Task :shared:compileJava NO-SOURCE
+> Task :shared:classes UP-TO-DATE
+> Task :shared:jar UP-TO-DATE
+> Task :mobile:dataBindingGenBaseClassesDebug
 > Task :mobile:processDebugManifest
 > Task :mobile:javaPreCompileDebug UP-TO-DATE
 > Task :mobile:preDebugUnitTestBuild UP-TO-DATE
@@ -32,32 +35,24 @@ This migration can be done automatically using the AGP Upgrade Assistant, please
 > Task :mobile:processDebugJavaRes NO-SOURCE
 > Task :mobile:processDebugUnitTestJavaRes NO-SOURCE
 > Task :mobile:processDebugManifestForPackage
-> Task :shared:compileKotlin
-> Task :shared:compileJava NO-SOURCE
-> Task :shared:classes UP-TO-DATE
-> Task :shared:jar UP-TO-DATE
-> Task :shared:compileTestKotlin
-> Task :shared:compileTestJava NO-SOURCE
-> Task :shared:testClasses UP-TO-DATE
-> Task :shared:test
 > Task :mobile:processDebugResources
 
 > Task :mobile:compileDebugKotlin
 w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/mobile/src/main/java/com/example/samplewearmobileapp/EcgPlotter.kt:120:24 Condition 'gridRect == null' is always 'false'
-w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/mobile/src/main/java/com/example/samplewearmobileapp/EcgPlotter.kt:247:13 Condition 'plot == null' is always 'false'
-w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/mobile/src/main/java/com/example/samplewearmobileapp/EcgPlotter.kt:274:13 Condition 'seriesVisible != null' is always 'true'
+w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/mobile/src/main/java/com/example/samplewearmobileapp/EcgPlotter.kt:244:13 Condition 'plot == null' is always 'false'
+w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/mobile/src/main/java/com/example/samplewearmobileapp/EcgPlotter.kt:271:13 Condition 'seriesVisible != null' is always 'true'
 w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/mobile/src/main/java/com/example/samplewearmobileapp/MainActivity.kt:12:27 'PreferenceManager' is deprecated. Deprecated in Java
-w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/mobile/src/main/java/com/example/samplewearmobileapp/MainActivity.kt:404:29 'PreferenceManager' is deprecated. Deprecated in Java
-w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/mobile/src/main/java/com/example/samplewearmobileapp/MainActivity.kt:404:47 'getDefaultSharedPreferences(Context!): SharedPreferences!' is deprecated. Deprecated in Java
-w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/mobile/src/main/java/com/example/samplewearmobileapp/MainActivity.kt:821:20 'onActivityResult(Int, Int, Intent?): Unit' is deprecated. Overrides deprecated member in 'androidx.activity.ComponentActivity'. Deprecated in Java
-w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/mobile/src/main/java/com/example/samplewearmobileapp/MainActivity.kt:946:33 Condition 'deviceId == null' is always 'false'
-w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/mobile/src/main/java/com/example/samplewearmobileapp/MainActivity.kt:1233:13 Condition 'deviceId == null' is always 'false'
-w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/mobile/src/main/java/com/example/samplewearmobileapp/MainActivity.kt:1252:19 'backgroundEntered(): Unit' is deprecated. in release 3.2.8. Move to the background is not relevant information for SDK starting from release 3.2.8
-w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/mobile/src/main/java/com/example/samplewearmobileapp/MainActivity.kt:1261:15 'onBackPressed(): Unit' is deprecated. Overrides deprecated member in 'androidx.core.app.ComponentActivity'. Deprecated in Java
-w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/mobile/src/main/java/com/example/samplewearmobileapp/MainActivity.kt:1579:17 Condition 'deviceId == null' is always 'false'
-w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/mobile/src/main/java/com/example/samplewearmobileapp/MainActivity.kt:1597:17 Condition 'deviceId == null' is always 'false'
-w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/mobile/src/main/java/com/example/samplewearmobileapp/MainActivity.kt:1751:21 Variable 'sampleCount' is never used
-w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/mobile/src/main/java/com/example/samplewearmobileapp/MainActivity.kt:2593:35 Condition 'ecgPlotter!!.getVisibleSeries() != null' is always 'true'
+w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/mobile/src/main/java/com/example/samplewearmobileapp/MainActivity.kt:407:29 'PreferenceManager' is deprecated. Deprecated in Java
+w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/mobile/src/main/java/com/example/samplewearmobileapp/MainActivity.kt:407:47 'getDefaultSharedPreferences(Context!): SharedPreferences!' is deprecated. Deprecated in Java
+w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/mobile/src/main/java/com/example/samplewearmobileapp/MainActivity.kt:850:20 'onActivityResult(Int, Int, Intent?): Unit' is deprecated. Overrides deprecated member in 'androidx.activity.ComponentActivity'. Deprecated in Java
+w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/mobile/src/main/java/com/example/samplewearmobileapp/MainActivity.kt:975:33 Condition 'deviceId == null' is always 'false'
+w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/mobile/src/main/java/com/example/samplewearmobileapp/MainActivity.kt:1262:13 Condition 'deviceId == null' is always 'false'
+w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/mobile/src/main/java/com/example/samplewearmobileapp/MainActivity.kt:1281:19 'backgroundEntered(): Unit' is deprecated. in release 3.2.8. Move to the background is not relevant information for SDK starting from release 3.2.8
+w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/mobile/src/main/java/com/example/samplewearmobileapp/MainActivity.kt:1290:15 'onBackPressed(): Unit' is deprecated. Overrides deprecated member in 'androidx.core.app.ComponentActivity'. Deprecated in Java
+w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/mobile/src/main/java/com/example/samplewearmobileapp/MainActivity.kt:1608:17 Condition 'deviceId == null' is always 'false'
+w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/mobile/src/main/java/com/example/samplewearmobileapp/MainActivity.kt:1626:17 Condition 'deviceId == null' is always 'false'
+w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/mobile/src/main/java/com/example/samplewearmobileapp/MainActivity.kt:1780:21 Variable 'sampleCount' is never used
+w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/mobile/src/main/java/com/example/samplewearmobileapp/MainActivity.kt:2636:35 Condition 'ecgPlotter!!.getVisibleSeries() != null' is always 'true'
 w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/mobile/src/main/java/com/example/samplewearmobileapp/MobileService.kt:44:13 Variable 'message' is never used
 w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/mobile/src/main/java/com/example/samplewearmobileapp/SettingsActivity.kt:48:15 'onBackPressed(): Unit' is deprecated. Overrides deprecated member in 'androidx.core.app.ComponentActivity'. Deprecated in Java
 w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/mobile/src/main/java/com/example/samplewearmobileapp/utils/AppUtils.kt:93:13 Name shadowed: msg
@@ -68,24 +63,22 @@ w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/mobile/src/main/java/com/exam
 w: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/mobile/src/main/java/com/example/samplewearmobileapp/utils/UriUtils.kt:298:41 'getPackageInfo(String, Int): PackageInfo!' is deprecated. Deprecated in Java
 
 > Task :mobile:compileDebugJavaWithJavac
-.\gradlew : warning: [options] source value 8 is obsolete and will be removed in a 
-future release
+.\gradlew : warning: [options] source value 8 is obsolete and will be removed in a future release
 At line:1 char:1
-+ .\gradlew :shared:test :mobile:testDebugUnitTest --no-daemon 2>&1 | O ...
-+ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    + CategoryInfo          : NotSpecified: (warning: [optio... future release:String) 
-[], RemoteExcep    tion
++ .\gradlew :mobile:testDebugUnitTest --no-daemon 2>&1 | Out-File d:\SE ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (warning: [optio... future release:String) [], RemoteException
     + FullyQualifiedErrorId : NativeCommandError
  
 warning: [options] target value 8 is obsolete and will be removed in a future release
 warning: [options] To suppress warnings about obsolete options, use -Xlint:-options.
 3 warnings
 
-> Task :mobile:bundleDebugClassesToRuntimeJar
 > Task :mobile:bundleDebugClassesToCompileJar
+> Task :mobile:bundleDebugClassesToRuntimeJar
 > Task :mobile:compileDebugUnitTestKotlin
 > Task :mobile:compileDebugUnitTestJavaWithJavac NO-SOURCE
 > Task :mobile:testDebugUnitTest
 
 BUILD SUCCESSFUL in 34s
-27 actionable tasks: 13 executed, 14 up-to-date
+25 actionable tasks: 15 executed, 10 up-to-date
