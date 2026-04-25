@@ -5,12 +5,16 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.os.Build
+import android.text.InputType
 import android.util.Log
 import android.view.ContextThemeWrapper
+import android.widget.EditText
+import android.widget.LinearLayout
 import com.example.samplewearmobileapp.R
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.PrintStream
+import java.text.SimpleDateFormat
 import java.util.*
 
 object AppUtils {
@@ -23,7 +27,72 @@ object AppUtils {
      * @param title   The dialog title.
      * @param msg     The dialog message.
      */
-    private fun alert(context: Context, title: String, msg: String) {
+    /**
+     * Shows a device ID input dialog and returns the entered ID via [onConfirm].
+     * Pre-fills with [currentId] if provided.
+     */
+    fun showDeviceIdDialog(
+        context: Context,
+        currentId: String,
+        onConfirm: (String) -> Unit
+    ) {
+        val editText = EditText(context).apply {
+            setText(currentId)
+            hint = "e.g. A0B1C2"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS
+            setSelectAllOnFocus(true)
+        }
+        val container = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            val padding = (16 * context.resources.displayMetrics.density).toInt()
+            setPadding(padding, padding, padding, padding)
+            addView(editText)
+        }
+        AlertDialog.Builder(context)
+            .setTitle(context.getString(R.string.title_device_id_dialog))
+            .setMessage(context.getString(R.string.message_device_id_dialog))
+            .setView(container)
+            .setPositiveButton(context.getString(R.string.ok)) { _, _ ->
+                onConfirm(editText.text.toString().trim())
+            }
+            .setNegativeButton(context.getString(R.string.cancel), null)
+            .show()
+    }
+
+    /**
+     * Shows a filename input dialog and returns the entered name via [onConfirm].
+     * Pre-fills with a timestamp-based name if [patientName] is blank.
+     */
+    fun showSaveDialog(
+        context: Context,
+        patientName: String,
+        onConfirm: (String) -> Unit
+    ) {
+        val dateStr = SimpleDateFormat("yyyy-MM-dd_HH-mm", Locale.getDefault()).format(Date())
+        val defaultName = if (patientName.isNotBlank()) "${patientName}_$dateStr" else dateStr
+        val editText = EditText(context).apply {
+            setText(defaultName)
+            hint = "File name (without extension)"
+            inputType = InputType.TYPE_CLASS_TEXT
+            setSelectAllOnFocus(true)
+        }
+        val container = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            val padding = (16 * context.resources.displayMetrics.density).toInt()
+            setPadding(padding, padding, padding, padding)
+            addView(editText)
+        }
+        AlertDialog.Builder(context)
+            .setTitle("Save data")
+            .setView(container)
+            .setPositiveButton(context.getString(R.string.ok)) { _, _ ->
+                onConfirm(editText.text.toString().trim())
+            }
+            .setNegativeButton(context.getString(R.string.cancel), null)
+            .show()
+    }
+
+    fun alert(context: Context, title: String, msg: String) {
         try {
             val alertDialog = AlertDialog.Builder(context)
                 .setTitle(title)

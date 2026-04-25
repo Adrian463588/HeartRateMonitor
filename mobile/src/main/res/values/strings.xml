@@ -140,4 +140,12 @@
     <string name="analysis_visibility_title">Analysis Visibility</string>
     <string name="analysis_visibility_summary_on">Analysis plots will be shown</string>
     <string name="analysis_visibility_summary_off">Analysis plots will not be shown</string>
+
+    <!-- Device ID dialog (used by AppUtils) -->
+    <string name="title_device_id_dialog">Connect to Polar Device</string>
+    <string name="message_device_id_dialog">Enter your Polar device ID (e.g. A0B1C2)</string>
+
+    <!-- Status labels -->
+    <string name="status_not_connected">Not connected</string>
+
 </resources>

@@ -5,12 +5,12 @@ plugins {
 
 android {
     namespace 'com.example.samplewearmobileapp'
-    compileSdk 33
+    compileSdk 34
 
     defaultConfig {
         applicationId "com.example.samplewearmobileapp"
         minSdk 28
-        targetSdk 33
+        targetSdk 34
         versionCode 2
         versionName "1.1"
 
@@ -23,49 +23,66 @@ android {
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
+
     buildFeatures {
         viewBinding true
-    }
-    compileOptions {
-        sourceCompatibility JavaVersion.VERSION_1_8
-        targetCompatibility JavaVersion.VERSION_1_8
-    }
-    kotlinOptions {
-        jvmTarget = '1.8'
+        buildConfig false
     }
 
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_21
+        targetCompatibility JavaVersion.VERSION_21
+    }
+
+    kotlinOptions {
+        jvmTarget = '21'
+    }
+
+    testOptions {
+        unitTests.returnDefaultValues = true
+    }
 }
 
 dependencies {
-    // default implementations
-    implementation 'androidx.core:core-ktx:1.9.0'
+    // AndroidX core
+    implementation 'androidx.core:core-ktx:1.12.0'
     implementation 'androidx.appcompat:appcompat:1.6.1'
-    implementation 'com.google.android.material:material:1.7.0'
+    implementation 'com.google.android.material:material:1.11.0'
     implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
-    implementation 'androidx.preference:preference-ktx:1.2.0'
-    implementation 'androidx.lifecycle:lifecycle-viewmodel-ktx:2.5.1'
-    implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.5.1'
-    testImplementation 'junit:junit:4.13.2'
-    androidTestImplementation 'androidx.test.ext:junit:1.1.4'
-    androidTestImplementation 'androidx.test.espresso:espresso-core:3.5.0'
+    implementation 'androidx.preference:preference-ktx:1.2.1'
 
-    // Polar SDK
-//    implementation fileTree(dir: 'libs', include: '*.aar')
-    implementation 'com.github.polarofficial:polar-ble-sdk:4.0.0'
+    // Lifecycle — ViewModel + coroutines
+    implementation 'androidx.lifecycle:lifecycle-viewmodel-ktx:2.7.0'
+    implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.7.0'
 
-    // implement shared module
+    // Kotlin Coroutines (required by Polar SDK v7 and Wearable Data Layer)
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3'
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.7.3'
+
+    // Polar BLE SDK v6 (latest stable — 7.x requires Kotlin 2.3+ not yet stable with AGP 8.4)
+    implementation 'com.github.polarofficial:polar-ble-sdk:6.16.1'
+
+    // ReactiveX — required by Polar SDK v6 internally
+    implementation 'io.reactivex.rxjava3:rxjava:3.1.8'
+    implementation 'io.reactivex.rxjava3:rxandroid:3.0.2'
+
+    // Shared module
     implementation project(path: ':shared')
 
-    // wearables API
-    implementation 'com.google.android.gms:play-services-wearable:11.6.0'
+    // Wearable Data Layer API (modern Task-based, replaces deprecated GoogleApiClient)
+    implementation 'com.google.android.gms:play-services-wearable:19.0.0'
 
-    // Gson
-    implementation 'com.google.code.gson:gson:2.8.9'
+    // JSON serialization
+    implementation 'com.google.code.gson:gson:2.10.1'
 
-    // Android Plot
+    // AndroidPlot for ECG/PPG charts
     implementation 'com.androidplot:androidplot-core:1.5.10'
 
-    // ReactiveX
-    implementation 'io.reactivex.rxjava3:rxjava:3.1.5'
-    implementation 'io.reactivex.rxjava3:rxandroid:3.0.0'
+    // Unit testing
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.mockito:mockito-core:5.7.0'
+    testImplementation 'org.mockito.kotlin:mockito-kotlin:5.1.0'
+    testImplementation 'org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3'
+    androidTestImplementation 'androidx.test.ext:junit:1.1.5'
+    androidTestImplementation 'androidx.test.espresso:espresso-core:3.5.1'
 }

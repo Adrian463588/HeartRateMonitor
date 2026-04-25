@@ -10,7 +10,9 @@ import com.example.samplewearmobileapp.Constants.MOV_AVG_HR_WINDOW
 import com.example.samplewearmobileapp.models.FixedSizeList
 import com.example.samplewearmobileapp.models.RunningAverage
 import com.example.samplewearmobileapp.utils.SignalFilter
+import com.polar.sdk.api.model.EcgSample
 import com.polar.sdk.api.model.PolarEcgData
+import com.polar.sdk.api.model.PolarEcgDataSample
 import java.util.*
 import kotlin.math.sqrt
 
@@ -60,9 +62,10 @@ class QrsDetector(activity: MainActivity) {
         val batchTimestamps = ecgPlotter()?.getLastBatchTimestamps()
             ?: LongArray(polarEcgData.samples.size)
 
-        // samples contains the ecgValues values in μV, mv = .001 * μV;
+        // Process each sample — cast to EcgSample for voltage access (SDK v6 sealed class)
         for ((idx, ecgDataSample) in polarEcgData.samples.withIndex()) {
-            detectQrs(ecgDataSample, batchTimestamps[idx])
+            val ecgSample = ecgDataSample as? EcgSample ?: continue
+            detectQrs(ecgSample, batchTimestamps[idx])
         }
     }
 
@@ -71,7 +74,7 @@ class QrsDetector(activity: MainActivity) {
      *
      * @param ecgDataSample The value to process.
      */
-    private fun detectQrs(ecgDataSample: PolarEcgData.PolarEcgDataSample, normalizedTimestamp: Long) {
+    private fun detectQrs(ecgDataSample: EcgSample, normalizedTimestamp: Long) {
         val ecg = MICRO_TO_MILLI_VOLT * ecgDataSample.voltage
         // Record the start time as now.
         if (java.lang.Double.isNaN(startTime)) startTime = Date().time.toDouble()
