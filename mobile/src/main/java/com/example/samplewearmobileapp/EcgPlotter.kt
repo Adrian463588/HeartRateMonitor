@@ -12,6 +12,7 @@ import com.example.samplewearmobileapp.Constants.N_ECG_PLOT_POINTS
 import com.example.samplewearmobileapp.Constants.N_LARGE
 import com.example.samplewearmobileapp.Constants.N_TOTAL_VISIBLE_ECG_POINTS
 import com.example.samplewearmobileapp.utils.AppUtils
+import com.polar.sdk.api.model.EcgSample
 import com.polar.sdk.api.model.PolarEcgData
 import java.util.*
 
@@ -185,14 +186,16 @@ class EcgPlotter: PlotterListener {
 
         // Add the new values, removing old values if needed
         for (ecgDataSample in polarEcgData.samples) {
+            // SDK v6: voltage lives on the EcgSample subclass of the sealed PolarEcgDataSample
+            val voltageInt = (ecgDataSample as? EcgSample)?.voltage ?: continue
             // remove old values only on visible series
             if (seriesVisible.size() >= N_TOTAL_VISIBLE_ECG_POINTS) {
                 seriesVisible.removeFirst()
             }
             // Convert from  μV to mV and add to series
-            seriesVisible.addLast(dataIndex, MICRO_TO_MILLI_VOLT * ecgDataSample.voltage)
+            seriesVisible.addLast(dataIndex, MICRO_TO_MILLI_VOLT * voltageInt)
             // Add the value to the all series as well
-            seriesAll.addLast(dataIndex, MICRO_TO_MILLI_VOLT * ecgDataSample.voltage)
+            seriesAll.addLast(dataIndex, MICRO_TO_MILLI_VOLT * voltageInt)
             val normalizedTimestamp = TimestampHelper.nextEcgTimestamp(
                 ECG_SAMPLE_RATE.toDouble()
             )
