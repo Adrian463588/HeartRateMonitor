@@ -11,79 +11,118 @@ import com.example.samplewearmobileapp.Constants.N_ECG_PLOT_POINTS
 import com.example.samplewearmobileapp.Constants.N_LARGE
 import com.example.samplewearmobileapp.Constants.N_TOTAL_VISIBLE_ECG_POINTS
 import com.example.samplewearmobileapp.utils.AppUtils
+import java.util.Date
 
-/**
- * Plots QRS detection output (ECG, derivative, integration score, R-peaks).
- *
- * **Stuttering fix:**
- * `plot.redraw()` is now routed through [PlotUpdateScheduler], coalescing multiple
- * per-sample calls into one redraw per vsync frame. The existing every-73-sample
- * modulo gate has been removed in favour of the scheduler's frame-aligned throttle.
- *
- * **Data integrity:** all series receive data at full ECG rate (130 Hz).
- */
-class QrsPlotter : PlotterListener {
+class QrsPlotter: PlotterListener {
     private lateinit var parentActivity: MainActivity
     private var plot: XYPlot
-    private lateinit var scheduler: PlotUpdateScheduler
 
-    // --- Series declarations (public for CSV export access) ---
-
+    // ECG
     private lateinit var formatterEcg: XYSeriesFormatter<XYRegionFormatter>
-    /** Visible ECG display series (capped at [N_TOTAL_VISIBLE_ECG_POINTS]). */
+    /**
+     * The series that contain *only* the ecg data
+     * used for displaying the plot in the app.
+     * This series is limited by `N_TOTAL_VISIBLE_POINTS`.
+     */
     lateinit var seriesPlotEcg: SimpleXYSeries
-    /** Full-resolution ECG data series for CSV export. */
+    /**
+     * The series that contain **all** ecg data.
+     */
     lateinit var seriesDataEcg: SimpleXYSeries
 
+    // Square
     private lateinit var formatterSquares: XYSeriesFormatter<XYRegionFormatter>
+    /**
+     * The series that contain *only* the squares data
+     * used for displaying the plot in the app.
+     * This series is limited by `N_TOTAL_VISIBLE_POINTS`.
+     */
     lateinit var seriesPlotSquares: SimpleXYSeries
+    /**
+     * The series that contain **all** squares data.
+     */
     lateinit var seriesDataSquares: SimpleXYSeries
 
+    // Score
     private lateinit var formatterScores: XYSeriesFormatter<XYRegionFormatter>
+    /**
+     * The series that contain *only* the scores data
+     * used for displaying the plot in the app.
+     * This series is limited by `N_TOTAL_VISIBLE_POINTS`.
+     */
     lateinit var seriesPlotScores: SimpleXYSeries
+    /**
+     * The series that contain **all** scores data.
+     */
     lateinit var seriesDataScores: SimpleXYSeries
 
+    // Peaks
     private lateinit var formatterPeaks: XYSeriesFormatter<XYRegionFormatter>
-    /** Visible R-peak markers. */
+    /**
+     * The series that contain *only* the peaks data
+     * used for displaying the plot in the app.
+     * This series is limited by `N_TOTAL_VISIBLE_POINTS`.
+     */
     lateinit var seriesPlotPeaks: SimpleXYSeries
-    /** Full R-peak series for CSV export. */
+    /**
+     * The series that contain **all** peaks data.
+     */
     lateinit var seriesDataPeaks: SimpleXYSeries
 
-    /** Timestamps aligned with [seriesDataEcg]. */
+    /**
+     * The series that contain **all** timestamp data.
+     * Timestamp is taken from Polar device and is in `Long` type.
+     * The timestamp corresponds to the timestamp of
+     * ECG value of the same index.
+     */
     lateinit var seriesTimestamp: SimpleXYSeries
 
+    /**
+     * The next index in the data (or the length of the series.)
+     */
     var dataIndex: Long = 0
 
-    /** Simplified constructor — for getNewInstance() use only. */
+    /**
+     * Simplified constructor.
+     * @param plot The XYPlot.
+     */
     constructor(plot: XYPlot) {
         this.plot = plot
+        // Don't do anything else
     }
 
     /**
      * Full constructor.
-     *
-     * @param activity Parent activity needed for resource access.
-     * @param plot     The XYPlot view.
-     * @param scheduler Rate-limited redraw coordinator.
+     * @param activity Parent activity (MainActivity).
+     * @param plot The XYPlot.
      */
-    constructor(activity: MainActivity, plot: XYPlot, scheduler: PlotUpdateScheduler) {
-        Log.d(TAG, "QrsPlotter constructor")
+    constructor(activity: MainActivity, plot: XYPlot) {
+        Log.d(TAG, this.javaClass.simpleName + " QrsPlotter constructor")
+        // This is the parent activity, needed for resources
         this.parentActivity = activity
         this.plot = plot
-        this.scheduler = scheduler
         dataIndex = 0
 
-        formatterEcg = LineAndPointFormatter(Color.rgb(0, 153, 255), null, null, null)
+        formatterEcg = LineAndPointFormatter(
+            Color.rgb(0, 153, 255),
+            null, null, null
+        )
         formatterEcg.isLegendIconEnabled = false
         seriesPlotEcg = SimpleXYSeries("ECG")
         seriesDataEcg = SimpleXYSeries("ECG")
 
-        formatterSquares = LineAndPointFormatter(Color.rgb(255, 216, 0), null, null, null)
+        formatterSquares = LineAndPointFormatter(
+            Color.rgb(255, 216, 0),
+            null, null, null
+        )
         formatterSquares.isLegendIconEnabled = false
         seriesPlotSquares = SimpleXYSeries("Derivative")
         seriesDataSquares = SimpleXYSeries("Derivative")
 
-        formatterScores = LineAndPointFormatter(Color.rgb(50, 205, 50), null, null, null)
+        formatterScores = LineAndPointFormatter(
+            Color.rgb(50, 205, 50),
+            null, null, null
+        ) // Crimson
         formatterScores.isLegendIconEnabled = false
         seriesPlotScores = SimpleXYSeries("Square")
         seriesDataScores = SimpleXYSeries("Square")
@@ -95,37 +134,60 @@ class QrsPlotter : PlotterListener {
 
         seriesTimestamp = SimpleXYSeries("Timestamp")
 
-        plot.addSeries(seriesPlotSquares, formatterSquares)
-        plot.addSeries(seriesPlotScores, formatterScores)
-        plot.addSeries(seriesPlotPeaks, formatterPeaks)
-        plot.addSeries(seriesPlotEcg, formatterEcg)
+        // only add the "plot series" to the plot for displaying
+        this.plot.addSeries(seriesPlotSquares, formatterSquares)
+        this.plot.addSeries(seriesPlotScores, formatterScores)
+        this.plot.addSeries(seriesPlotPeaks, formatterPeaks)
+        this.plot.addSeries(seriesPlotEcg, formatterEcg)
         setupPlot()
     }
 
+    /**
+     * Sets the plot parameters, calculating the range boundaries to have the
+     * same grid as the domain.  Calls update when done.
+     */
     fun setupPlot() {
-        Log.d(TAG, "setupPlot")
+        Log.d(TAG, this.javaClass.simpleName + " setupPlot")
         if (plot.visibility == View.GONE) return
         try {
-            val gridRect = plot.graph.gridRect ?: run {
-                Log.d(TAG, "setupPlot: gridRect is null, thread=${Thread.currentThread().name}")
+            // Calculate the range limits to make the blocks be square
+            // Using .5 mV and nLarge / samplingRate for total grid size
+            // rMax is half the total, rMax at top and -rMax at bottom
+            val rMax: Double
+            val gridRect = plot.graph.gridRect
+            rMax = if (gridRect == null) {
+                Log.d(
+                    TAG, """QrsPlotter.setupPlot: gridRect is null
+                        |thread: ${Thread.currentThread().name}""".trimMargin()
+                )
                 return
+            } else {
+                (.25 * N_DOMAIN_LARGE_BOXES * gridRect.height()
+                        / gridRect.width())
             }
-            val rMax = .25 * N_DOMAIN_LARGE_BOXES * gridRect.height() / gridRect.width()
 
+            // Range
+            // Set the range block to be .1 mV so a large block will be .5 mV
             plot.setRangeBoundaries(-rMax, rMax, BoundaryMode.FIXED)
+            // Make the x axis visible
             val color = plot.graph.rangeGridLinePaint.color
             plot.graph.rangeOriginLinePaint.color = color
             plot.graph.rangeOriginLinePaint.strokeWidth = PixelUtils.dpToPix(1.5f)
             plot.setRangeStep(StepMode.INCREMENT_BY_VAL, .5)
             plot.linesPerRangeLabel = 5
+            // Make it be centered
             plot.setUserRangeOrigin(0.0)
 
+            // Domain
             updateDomainBoundaries()
+            // Set the domain block to be .2 * N_LARGE so large block will be
+            // nLarge samples
             plot.setDomainStep(StepMode.INCREMENT_BY_VAL, N_LARGE.toDouble())
 
-            scheduler.scheduleRedraw(plot)
+            // Update the plot
+            update()
         } catch (ex: Exception) {
-            val msg = """Error in QrsPlotter.setupPlot:
+            val msg = """Error in QrsPlotter.setupPLot:
                 |isLaidOut=${plot.isLaidOut}
                 |width=${plot.width}
                 |height=${plot.height}""".trimMargin()
@@ -135,23 +197,43 @@ class QrsPlotter : PlotterListener {
     }
 
     /**
-     * Appends one ECG sample together with its derived signals.
-     * All four series receive data every call. A single frame-coalesced redraw
-     * is scheduled after the update.
+     * Implements a strip chart adding new data at the end.
+     *
+     * @param ecg Value for the first series. Ecg
+     * @param square Value for the second series. Square
+     * @param score Value for the third series. Score
+     * @param timestamp The timestamp of the other values.
      */
-    fun addValues(ecg: Number?, square: Number?, score: Number?, timestamp: Long?) {
+    fun addValues(
+        ecg: Number?,
+        square: Number?,
+        score: Number?,
+        timestamp:  Long?
+    ) {
+        // Add the new values, removing old values if needed
+        // Convert from  μV to mV
         if (ecg != null) {
-            if (seriesPlotEcg.size() >= N_TOTAL_VISIBLE_ECG_POINTS) seriesPlotEcg.removeFirst()
+            // only remove old values in the "plot series"
+            if (seriesPlotEcg.size() >= N_TOTAL_VISIBLE_ECG_POINTS) {
+                seriesPlotEcg.removeFirst()
+            }
+            // add the new values to both series
             seriesPlotEcg.addLast(dataIndex, ecg)
             seriesDataEcg.addLast(dataIndex, ecg)
         }
         if (square != null) {
-            if (seriesPlotSquares.size() >= N_TOTAL_VISIBLE_ECG_POINTS) seriesPlotSquares.removeFirst()
+            // only remove old values in the "plot series"
+            if (seriesPlotSquares.size() >= N_TOTAL_VISIBLE_ECG_POINTS) {
+                seriesPlotSquares.removeFirst()
+            }
             seriesPlotSquares.addLast(dataIndex, square)
             seriesDataSquares.addLast(dataIndex, square)
         }
         if (score != null) {
-            if (seriesPlotScores.size() >= N_TOTAL_VISIBLE_ECG_POINTS) seriesPlotScores.removeFirst()
+            // only remove old values in the "plot series"
+            if (seriesPlotScores.size() >= N_TOTAL_VISIBLE_ECG_POINTS) {
+                seriesPlotScores.removeFirst()
+            }
             seriesPlotScores.addLast(dataIndex, score)
             seriesDataScores.addLast(dataIndex, score)
         }
@@ -159,8 +241,9 @@ class QrsPlotter : PlotterListener {
             seriesTimestamp.addLast(dataIndex, timestamp)
         }
         dataIndex++
+        // Reset the domain boundaries
         updateDomainBoundaries()
-        scheduler.scheduleRedraw(plot)
+        update()
     }
 
     fun addPeakValue(sample: Int, ecg: Double) {
@@ -170,6 +253,7 @@ class QrsPlotter : PlotterListener {
     }
 
     fun replaceLastPeakValue(sample: Int, ecg: Double) {
+        // Remove old values if needed
         removeOutOfRangePlotPeakValues()
         seriesPlotPeaks.removeLast()
         seriesDataPeaks.removeLast()
@@ -177,38 +261,64 @@ class QrsPlotter : PlotterListener {
         seriesDataPeaks.addLast(sample, ecg)
     }
 
+    /**
+     * Removes peaks with indices that are no longer in range.
+     */
     fun removeOutOfRangePlotPeakValues() {
+        // Remove old values if needed
         val xMin = dataIndex - N_TOTAL_VISIBLE_ECG_POINTS
-        while (seriesPlotPeaks.size() > 0 &&
-            seriesPlotPeaks.getxVals().first.toInt() < xMin
-        ) {
+        while (seriesPlotPeaks.size() > 0 && seriesPlotPeaks.getxVals().first.toInt() < xMin) {
             seriesPlotPeaks.removeFirst()
         }
     }
 
     private fun updateDomainBoundaries() {
         if (plot.visibility == View.GONE) return
-        plot.setDomainBoundaries(dataIndex - N_ECG_PLOT_POINTS, dataIndex, BoundaryMode.FIXED)
+        val plotMin: Long = dataIndex - N_ECG_PLOT_POINTS
+        val plotMax: Long = dataIndex
+        plot.setDomainBoundaries(plotMin, plotMax, BoundaryMode.FIXED)
     }
 
-    /** Implements [PlotterListener] — schedules a throttled redraw. */
+    /**
+     * Updates the plot. Runs on the UI thread.
+     */
     override fun update() {
         if (plot.visibility == View.GONE) return
-        scheduler.scheduleRedraw(plot)
+        if (dataIndex % 73 == 0L) {
+            parentActivity.runOnUiThread { plot.redraw() }
+        }
     }
 
+    /**
+     * Set panning on or off.
+     *
+     * @param on Whether to be on or off (true for on).
+     */
     fun setPanning(on: Boolean) {
-        if (on) PanZoom.attach(plot, PanZoom.Pan.HORIZONTAL, PanZoom.Zoom.NONE)
-        else PanZoom.attach(plot, PanZoom.Pan.NONE, PanZoom.Zoom.NONE)
+        if (on) {
+            PanZoom.attach(
+                plot, PanZoom.Pan.HORIZONTAL,
+                PanZoom.Zoom.NONE
+            )
+        } else {
+            PanZoom.attach(plot, PanZoom.Pan.NONE, PanZoom.Zoom.NONE)
+        }
     }
 
+    /**
+     * Clears the plot and resets dataIndex.
+     */
     fun clear() {
         dataIndex = 0
-        seriesPlotEcg.clear(); seriesDataEcg.clear()
-        seriesPlotSquares.clear(); seriesDataSquares.clear()
-        seriesPlotScores.clear(); seriesDataScores.clear()
-        seriesPlotPeaks.clear(); seriesDataPeaks.clear()
-        scheduler.scheduleRedraw(plot)
+        seriesPlotEcg.clear()
+        seriesDataEcg.clear()
+        seriesPlotSquares.clear()
+        seriesDataSquares.clear()
+        seriesPlotScores.clear()
+        seriesDataScores.clear()
+        seriesPlotPeaks.clear()
+        seriesDataPeaks.clear()
+        update()
     }
 
     companion object {

@@ -1,17 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-    Shared dialog layout for single text-field inputs.
-    Used by:
-      • MainActivity.saveDataWithName()  — filename entry
-      • The Preference library renders EditTextPreference dialogs
-        using this layout structure for Device ID and Patient Name.
-
-    DRY: one layout shared by all single-field input dialogs in the app.
-    SRP: responsible for field structure only — dialog chrome (title, buttons)
-         is owned by the AlertDialog / EditTextPreference framework.
-    Responsive: minHeight 48dp → WCAG 2.1 AA touch-target compliance.
-    Adaptive: all colors use ?attr/ so they resolve correctly in both
-              Light Mode and Dark Mode without any code changes.
+    Dialog layout for Device ID and Patient Name inputs.
+    Uses TextInputLayout (Material) so the hint, underline, and text color
+    all adapt automatically to Light Mode and Dark Mode.
+    DRY: one layout reused for all single-field text dialogs.
 -->
 <LinearLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
@@ -24,45 +16,20 @@
     android:paddingTop="8dp"
     android:paddingBottom="8dp">
 
-    <!--
-        OutlinedBox TextInputLayout.
-        OCP: extend Widget.MaterialComponents.TextInputLayout.OutlinedBox — no custom drawing.
-        boxStrokeColor and hintTextColor resolve to ?attr/colorPrimary at runtime:
-          Light mode → purple_500, Dark mode → purple_200 (set in night themes.xml).
-        boxBackgroundColor → ?attr/colorSurface gives a neutral field background that
-        adapts to the current window surface in both modes.
-    -->
     <com.google.android.material.textfield.TextInputLayout
         android:id="@+id/inputLayout"
         style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:minHeight="48dp"
-        app:boxStrokeColor="?attr/colorPrimary"
-        app:hintTextColor="?attr/colorPrimary"
-        app:boxBackgroundColor="?attr/colorSurface">
+        app:boxStrokeColor="@color/purple_500"
+        app:hintTextColor="@color/purple_500">
 
-        <!--
-            TextInputEditText — subclass of EditText so existing
-            findViewById<EditText>(R.id.input) calls in MainActivity continue
-            to work without any code change.
-
-            DO NOT set android:background here — TextInputLayout.OutlinedBox
-            manages the border/background internally. Setting it would break the
-            outline rendering.
-
-            textColor and textColorHint use Android framework theme attributes so
-            they adapt to Light/Dark mode automatically via the dialog's own theme.
-        -->
         <com.google.android.material.textfield.TextInputEditText
             android:id="@+id/input"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:inputType="text"
             android:maxLines="1"
-            android:minHeight="48dp"
-            android:textColor="?android:attr/textColorPrimary"
-            android:textColorHint="?android:attr/textColorHint"
             android:autofillHints="no" />
 
     </com.google.android.material.textfield.TextInputLayout>

@@ -1,67 +1,49 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!--
-    Preference screen definition.
-    DRY: EditTextPreferences reuse the single device_id_dialog.xml layout.
-    SRP: this file only declares preference structure — appearance is owned by themes.xml.
-    Each EditTextPreference has app:dialogTitle set explicitly because the Preference
-    library uses app:title for the list row label and needs app:dialogTitle for the
-    dialog window title; without it the dialog header is empty.
--->
 <PreferenceScreen xmlns:app="http://schemas.android.com/apk/res-auto">
 
     <PreferenceCategory app:title="@string/settings_title">
-
         <EditTextPreference
             app:defaultValue=""
             app:key="deviceId"
             app:title="@string/device_id_title"
-            app:dialogTitle="@string/device_id_title"
             app:dialogMessage="@string/device_id_summary"
             app:useSimpleSummaryProvider="true" />
-
         <EditTextPreference
             app:defaultValue=""
             app:key="patientName"
             app:title="@string/patient_name_title"
-            app:dialogTitle="@string/patient_name_title"
             app:dialogMessage="@string/patient_name_summary"
             app:useSimpleSummaryProvider="true" />
-
         <SwitchPreferenceCompat
             app:defaultValue="true"
             app:key="ppgGreenVisibility"
             app:summaryOn="@string/ppg_green_visibility_summary_on"
             app:summaryOff="@string/ppg_green_visibility_summary_off"
             app:title="@string/ppg_green_visibility_title" />
-
         <SwitchPreferenceCompat
             app:defaultValue="true"
             app:key="ppgIrVisibility"
             app:summaryOn="@string/ppg_ir_visibility_summary_on"
             app:summaryOff="@string/ppg_ir_visibility_summary_off"
             app:title="@string/ppg_ir_visibility_title" />
-
         <SwitchPreferenceCompat
             app:defaultValue="true"
             app:key="ppgRedVisibility"
             app:summaryOn="@string/ppg_red_visibility_summary_on"
             app:summaryOff="@string/ppg_red_visibility_summary_off"
             app:title="@string/ppg_red_visibility_title" />
-
         <SwitchPreferenceCompat
             app:defaultValue="true"
             app:key="ecgVisibility"
             app:summaryOn="@string/ecg_visibility_summary_on"
             app:summaryOff="@string/ecg_visibility_summary_off"
             app:title="@string/ecg_visibility_title" />
-
         <SwitchPreferenceCompat
             app:defaultValue="false"
             app:key="analysisVisibility"
             app:summaryOn="@string/analysis_visibility_summary_on"
             app:summaryOff="@string/analysis_visibility_summary_off"
             app:title="@string/analysis_visibility_title" />
-
     </PreferenceCategory>
 
 </PreferenceScreen>

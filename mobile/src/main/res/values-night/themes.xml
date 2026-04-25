@@ -1,81 +1,50 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
-
-    <!--
-        Base application theme — Dark Mode override.
-        OCP: same parent as light theme; only the color tokens differ.
-    -->
+    <!-- Base application theme — Dark Mode override. -->
     <style name="Theme.SampleWearMobileApp" parent="Theme.MaterialComponents.DayNight.DarkActionBar">
-        <!-- Lighter purple for readability on dark surfaces -->
+        <!-- Primary brand color. -->
         <item name="colorPrimary">@color/purple_200</item>
         <item name="colorPrimaryVariant">@color/purple_700</item>
         <item name="colorOnPrimary">@color/black</item>
+        <!-- Secondary brand color. -->
         <item name="colorSecondary">@color/teal_200</item>
         <item name="colorSecondaryVariant">@color/teal_200</item>
         <item name="colorOnSecondary">@color/black</item>
+        <!-- Status bar color. -->
         <item name="android:statusBarColor">?attr/colorPrimaryVariant</item>
-
         <!--
-            DRY: same attribute names as light theme — Android resource system
-            automatically picks this night file; callers use the same ?attr/ references.
+            DRY: same attr as light theme — override for Dark Mode dialogs.
+            All dialogs automatically use the night variant when in dark mode.
         -->
         <item name="alertDialogTheme">@style/AppAlertDialogTheme.Night</item>
-        <item name="android:dialogTheme">@style/AppAlertDialogTheme.Night</item>
-        <item name="preferenceTheme">@style/PreferenceThemeOverlay.v14.Material</item>
     </style>
 
     <!--
-        AppAlertDialogTheme.Night — Dark Mode.
-        SRP: owns dark dialog window appearance only.
-        DRY: color values from night semantic tokens in values-night/colors.xml.
-        Parent: same ThemeOverlay.MaterialComponents.MaterialAlertDialog — ensures
-                both AlertDialog.Builder AND EditTextPreference are covered.
+        AppAlertDialogTheme.Night — Dark Mode
+        SRP: only responsible for night-mode dialog appearance.
+        Inherits from Dark Dialog parent so background is automatically dark.
+        White text + teal buttons = high contrast on dark surface.
     -->
-    <style name="AppAlertDialogTheme.Night" parent="ThemeOverlay.MaterialComponents.MaterialAlertDialog">
+    <style name="AppAlertDialogTheme.Night" parent="Theme.AppCompat.Dialog.Alert">
         <item name="colorPrimary">@color/purple_200</item>
         <item name="colorAccent">@color/teal_200</item>
-
-        <!-- Dark dialog surface — explicit dark color, never inherits Activity white bg -->
-        <item name="android:background">@color/dialog_background</item>
-        <item name="android:windowBackground">@color/dialog_background</item>
-
-        <!-- White text on dark surface — high contrast -->
-        <item name="android:textColorPrimary">@color/dialog_text</item>
-        <item name="android:textColorSecondary">@color/dialog_hint</item>
-        <item name="android:textColor">@color/dialog_text</item>
-
-        <!-- Input text white in dark dialogs -->
-        <item name="android:editTextColor">@color/dialog_input_text</item>
-
-        <!--
-            DRY: one Night button style for all three button slots.
-        -->
+        <!-- White text on dark background -->
+        <item name="android:textColorPrimary">@android:color/white</item>
+        <item name="android:textColorSecondary">#BDBDBD</item>
+        <!-- EditText text color inside dark dialog -->
+        <item name="android:editTextColor">@android:color/white</item>
+        <!-- Button text — teal on dark for high visibility -->
         <item name="buttonBarPositiveButtonStyle">@style/DialogButtonStyle.Night</item>
         <item name="buttonBarNegativeButtonStyle">@style/DialogButtonStyle.Night</item>
         <item name="buttonBarNeutralButtonStyle">@style/DialogButtonStyle.Night</item>
     </style>
 
     <!--
-        DialogButtonStyle.Night — Dark Mode.
-        DRY: reused for all button types in dark dialogs.
-        Responsive: 48dp minHeight meets WCAG 2.1 AA touch-target requirement.
+        DialogButtonStyle.Night — Dark Mode
+        DRY: reused for all three button types in night dialogs.
     -->
-    <style name="DialogButtonStyle.Night" parent="Widget.MaterialComponents.Button.TextButton.Dialog">
-        <item name="android:textColor">@color/dialog_button</item>
+    <style name="DialogButtonStyle.Night" parent="Widget.AppCompat.Button.ButtonBar.AlertDialog">
+        <item name="android:textColor">@color/teal_200</item>
         <item name="android:textStyle">bold</item>
         <item name="android:textAllCaps">true</item>
-        <item name="android:minHeight">48dp</item>
-        <item name="android:minWidth">64dp</item>
-        <item name="android:paddingStart">8dp</item>
-        <item name="android:paddingEnd">8dp</item>
     </style>
-
-    <!--
-        InverseTheme — Night override.
-        OCP: inherits all night fixes from AppAlertDialogTheme.Night automatically.
-        No additional overrides needed.
-    -->
-    <style name="InverseTheme" parent="AppAlertDialogTheme.Night">
-        <!-- Intentionally empty — all styling from parent -->
-    </style>
-
-</resources>
+</resources>

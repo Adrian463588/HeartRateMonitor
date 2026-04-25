@@ -14,3 +14,6 @@
 .cxx
 local.properties
 **/libs/*.aar
+
+AGENTS.md
+PLAN.md

@@ -16,11 +16,9 @@ import androidx.core.content.ContextCompat
  * sensor data. Shows a persistent notification during recording.
  */
 class MobileService : Service() {
-
+    private val CHANNEL_ID = "MobileService"
 
     companion object {
-        private const val CHANNEL_ID = "MobileService"
-
         /**
          * Tracks whether the service is currently running.
          * Set in [onStartCommand] and cleared in [onDestroy].
@@ -77,7 +75,7 @@ class MobileService : Service() {
     private fun createNotificationChannel() {
         val serviceChannel = NotificationChannel(
             CHANNEL_ID, "Mobile Foreground Service Channel",
-            NotificationManager.IMPORTANCE_LOW
+            NotificationManager.IMPORTANCE_HIGH
         )
         serviceChannel.description = "Description"
         serviceChannel.enableLights(true)

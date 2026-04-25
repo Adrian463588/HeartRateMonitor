@@ -5,12 +5,12 @@ plugins {
 
 android {
     namespace 'com.example.samplewearmobileapp'
-    compileSdk 34
+    compileSdk 33
 
     defaultConfig {
         applicationId "com.example.samplewearmobileapp"
         minSdk 28
-        targetSdk 34
+        targetSdk 33
         versionCode 2
         versionName "1.1"
 
@@ -33,47 +33,39 @@ android {
     kotlinOptions {
         jvmTarget = '1.8'
     }
+
 }
 
 dependencies {
-    // AndroidX Core
-    implementation 'androidx.core:core-ktx:1.12.0'
+    // default implementations
+    implementation 'androidx.core:core-ktx:1.9.0'
     implementation 'androidx.appcompat:appcompat:1.6.1'
-    implementation 'com.google.android.material:material:1.9.0'
+    implementation 'com.google.android.material:material:1.7.0'
     implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
-    implementation 'androidx.preference:preference-ktx:1.2.1'
-
-    // Lifecycle (ViewModel + lifecycleScope)
-    implementation 'androidx.lifecycle:lifecycle-viewmodel-ktx:2.6.2'
-    implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.6.2'
-
-    // Coroutines
-    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3'
-    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.7.3'
-
-    // Testing
+    implementation 'androidx.preference:preference-ktx:1.2.0'
+    implementation 'androidx.lifecycle:lifecycle-viewmodel-ktx:2.5.1'
+    implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.5.1'
     testImplementation 'junit:junit:4.13.2'
-    testImplementation 'org.mockito:mockito-core:5.11.0'
-    testImplementation 'org.mockito.kotlin:mockito-kotlin:5.3.1'
-    androidTestImplementation 'androidx.test.ext:junit:1.1.5'
-    androidTestImplementation 'androidx.test.espresso:espresso-core:3.5.1'
+    androidTestImplementation 'androidx.test.ext:junit:1.1.4'
+    androidTestImplementation 'androidx.test.espresso:espresso-core:3.5.0'
 
-    // Polar SDK (BLE ECG)
+    // Polar SDK
+//    implementation fileTree(dir: 'libs', include: '*.aar')
     implementation 'com.github.polarofficial:polar-ble-sdk:4.0.0'
 
-    // Shared module
+    // implement shared module
     implementation project(path: ':shared')
 
-    // Wearable Data Layer — modern API (replaces deprecated GoogleApiClient)
-    implementation 'com.google.android.gms:play-services-wearable:18.2.0'
+    // wearables API
+    implementation 'com.google.android.gms:play-services-wearable:11.6.0'
 
     // Gson
-    implementation 'com.google.code.gson:gson:2.11.0'
+    implementation 'com.google.code.gson:gson:2.8.9'
 
-    // AndroidPlot
+    // Android Plot
     implementation 'com.androidplot:androidplot-core:1.5.10'
 
-    // ReactiveX (Polar SDK RxJava3)
+    // ReactiveX
     implementation 'io.reactivex.rxjava3:rxjava:3.1.5'
     implementation 'io.reactivex.rxjava3:rxandroid:3.0.0'
 }
