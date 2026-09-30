@@ -1,51 +1,52 @@
 package com.example.samplewearmobileapp
 
-import android.util.Log
 import com.example.samplewearmobileapp.models.PpgType
 
+/**
+ * Buffers PPG data points (value + timestamp) for batch transmission
+ * to the mobile module.
+ *
+ * @property ppgType The type of PPG data (Green, IR, or Red).
+ */
 class PpgRecording() {
     val values = mutableListOf<Int>()
     val timestamps = mutableListOf<Long>()
     lateinit var ppgType: PpgType
 
-    constructor(type: PpgType): this() {
+    constructor(type: PpgType) : this() {
         this.ppgType = type
     }
 
-    constructor(values: List<Int>, timestamps: List<Long>, type: PpgType): this() {
-        for (value in values) {
-            this.values.add(value)
-        }
-        for (timestamp in timestamps) {
-            this.timestamps.add(timestamp)
-        }
+    constructor(values: List<Int>, timestamps: List<Long>, type: PpgType) : this() {
+        this.values.addAll(values)
+        this.timestamps.addAll(timestamps)
         this.ppgType = type
     }
 
+    /** Appends a single PPG value and its timestamp to the buffer. */
     fun add(value: Int, timestamp: Long) {
         values.add(value)
         timestamps.add(timestamp)
     }
 
-    fun clearFromStartUntil(index: Int) {
-//        for (i in 0 until index + 1) {
-//            values.removeAt(i)
-//            timestamps.removeAt(i)
-//        }
-        for (i in 1 until index) {
+    /**
+     * Removes the first [count] elements from both buffers.
+     *
+     * @param count Number of elements to remove from the front.
+     */
+    fun clearFromStartUntil(count: Int) {
+        for (i in 0 until count) {
             values.removeFirst()
             timestamps.removeFirst()
         }
-        Log.i("Wear: PpgRecording.clearFromStartUntil()","Done.\n" +
-                "Values size now: ${values.size}\n" +
-                "Timestamps size now: ${timestamps.size}")
     }
 
+    /**
+     * Returns the current buffer size, or null if values and timestamps
+     * have become desynchronized (indicating a bug).
+     */
     fun getSize(): Int? {
         if (values.size != timestamps.size) {
-            Log.e("Wear: PpgRecording","Values and timestamps don't match.\n" +
-                    "Values size: ${values.size}\n" +
-                    "Timestamps size: ${timestamps.size}")
             return null
         }
         return values.size

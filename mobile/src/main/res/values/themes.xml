@@ -11,11 +11,36 @@
         <item name="colorOnSecondary">@color/black</item>
         <!-- Status bar color. -->
         <item name="android:statusBarColor">?attr/colorPrimaryVariant</item>
-        <!-- Customize your theme here. -->
+        <!--
+            DRY: alertDialogTheme here applies to ALL AlertDialogs in the app
+            automatically — EditTextPreference dialogs, AppUtils dialogs, etc.
+            OCP: we extend existing Material theme, not modifying base Android.
+        -->
+        <item name="alertDialogTheme">@style/AppAlertDialogTheme</item>
     </style>
 
-    <style name="InverseTheme" parent="Theme.AppCompat.Light.Dialog.Alert">
-        <item name="colorPrimary">@color/white</item>
+    <!--
+        AppAlertDialogTheme — DayNight Mode
+        SRP: only responsible for dialog appearance.
+        Ensures buttons, title, and input text adapt correctly to Light/Dark modes.
+    -->
+    <style name="AppAlertDialogTheme" parent="Theme.MaterialComponents.DayNight.Dialog.Alert">
+        <item name="colorPrimary">@color/purple_500</item>
         <item name="colorAccent">@color/purple_500</item>
+        <item name="buttonBarPositiveButtonStyle">@style/DialogButtonStyle</item>
+        <item name="buttonBarNegativeButtonStyle">@style/DialogButtonStyle</item>
+        <item name="buttonBarNeutralButtonStyle">@style/DialogButtonStyle</item>
     </style>
-</resources>
+
+    <!--
+        DialogButtonStyle — Light Mode
+        SRP: only styles button appearance.
+        DRY: one style reused for Positive, Negative, and Neutral buttons.
+    -->
+    <style name="DialogButtonStyle" parent="Widget.AppCompat.Button.ButtonBar.AlertDialog">
+        <item name="android:textColor">@color/purple_700</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:textAllCaps">true</item>
+    </style>
+
+</resources>

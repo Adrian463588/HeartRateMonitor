@@ -5,7 +5,7 @@ import android.util.Log
 import android.view.View
 import com.androidplot.util.PixelUtils
 import com.androidplot.xy.*
-import com.example.samplewearmobileapp.Constants.NANO_TO_MICRO_SEC
+import com.example.samplewearmobileapp.Constants.ECG_SAMPLE_RATE
 import com.example.samplewearmobileapp.Constants.N_DOMAIN_LARGE_BOXES
 import com.example.samplewearmobileapp.Constants.N_ECG_PLOT_POINTS
 import com.example.samplewearmobileapp.Constants.N_LARGE
@@ -129,8 +129,6 @@ class QrsPlotter: PlotterListener {
 
         formatterPeaks = LineAndPointFormatter(null, Color.RED, null, null)
         formatterPeaks.isLegendIconEnabled = false
-//        ((LineAndPointFormatter)mFormatter4).getVertexPaint()
-//        .setStrokeWidth(20);
         seriesPlotPeaks = SimpleXYSeries("Peaks")
         seriesDataPeaks = SimpleXYSeries("Peaks")
 
@@ -186,9 +184,6 @@ class QrsPlotter: PlotterListener {
             // nLarge samples
             plot.setDomainStep(StepMode.INCREMENT_BY_VAL, N_LARGE.toDouble())
 
-//            // Allow panning
-//            PanZoom.attach(mPlot, PanZoom.Pan.HORIZONTAL, PanZoom.Zoom.NONE);
-
             // Update the plot
             update()
         } catch (ex: Exception) {
@@ -215,10 +210,6 @@ class QrsPlotter: PlotterListener {
         score: Number?,
         timestamp:  Long?
     ) {
-//        Log.d(TAG, this.getClass().getSimpleName()
-//                + "addValues: dataIndex=" + mDataIndex + " mSeriesSize="
-//                + mSeries1.size() + " mSeries2Size=" + mSeries2.size()
-//                + " val1=" + val1 + " val2=" + val2);
         // Add the new values, removing old values if needed
         // Convert from  μV to mV
         if (ecg != null) {
@@ -247,8 +238,7 @@ class QrsPlotter: PlotterListener {
             seriesDataScores.addLast(dataIndex, score)
         }
         if (timestamp != null) {
-            seriesTimestamp.addLast(dataIndex,
-                (NANO_TO_MICRO_SEC * timestamp).toLong().adjustEpoch())
+            seriesTimestamp.addLast(dataIndex, timestamp)
         }
         dataIndex++
         // Reset the domain boundaries
@@ -257,35 +247,18 @@ class QrsPlotter: PlotterListener {
     }
 
     fun addPeakValue(sample: Int, ecg: Double) {
-//        Log.d(TAG, this.getClass().getSimpleName()
-//                + "addPeakValue: dataIndex=" + mDataIndex + " mSeriesSize="
-//                + mSeries4.size()
-//                + " sample=" + sample + " ecg=" + ecg);
-//
-        // Remove old values if needed
         removeOutOfRangePlotPeakValues()
         seriesPlotPeaks.addLast(sample, ecg)
         seriesDataPeaks.addLast(sample, ecg)
-//        Log.d(TAG, "Added peak value: sample=" + sample + " size=" +
-//        mSeries4.size()
-//                + " ecg=" + ecg + " mDataIndex=" + mDataIndex);
     }
 
     fun replaceLastPeakValue(sample: Int, ecg: Double) {
-//        Log.d(TAG, this.getClass().getSimpleName()
-//                + "addPeakValue: dataIndex=" + mDataIndex + " mSeriesSize="
-//                + mSeries4.size()
-//                + " sample=" + sample + " ecg=" + ecg);
-//
         // Remove old values if needed
         removeOutOfRangePlotPeakValues()
         seriesPlotPeaks.removeLast()
         seriesDataPeaks.removeLast()
         seriesPlotPeaks.addLast(sample, ecg)
         seriesDataPeaks.addLast(sample, ecg)
-//            Log.d(TAG, "Replaced peak value: sample=" + sample + " size=" +
-//            mSeries4.size()
-//                    + " ecg=" + ecg + " mDataIndex=" + mDataIndex);
     }
 
     /**
@@ -304,13 +277,6 @@ class QrsPlotter: PlotterListener {
         val plotMin: Long = dataIndex - N_ECG_PLOT_POINTS
         val plotMax: Long = dataIndex
         plot.setDomainBoundaries(plotMin, plotMax, BoundaryMode.FIXED)
-//        Log.d(TAG, this.getClass().getSimpleName() + "
-//        updateDomainBoundaries: "
-//                + "plotMin=" + plotMin + " plotMax=" + plotMax
-//                + " size=" + mSeries1.size());
-//        int colorInt = mPlot.getGraph().getGridBackgroundPaint().getColor();
-//        String hexColor = String.format("#%06X", (0xFFFFFF & colorInt));
-//        Log.d(TAG, "gridBgColor=" + hexColor);
     }
 
     /**
@@ -318,9 +284,6 @@ class QrsPlotter: PlotterListener {
      */
     override fun update() {
         if (plot.visibility == View.GONE) return
-        //            Log.d(TAG, this.getClass().getSimpleName()
-//                    + " update: thread: " + Thread.currentThread()
-//                    .getName());
         if (dataIndex % 73 == 0L) {
             parentActivity.runOnUiThread { plot.redraw() }
         }
@@ -360,9 +323,5 @@ class QrsPlotter: PlotterListener {
 
     companion object {
         private const val TAG = "QrsPlotter"
-
-        private fun Long.adjustEpoch(): Long {
-            return this + Date(2000 - 1900, 0, 1).time
-        }
     }
 }

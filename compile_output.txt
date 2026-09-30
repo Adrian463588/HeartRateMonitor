@@ -1,0 +1,72 @@
+﻿To honour the JVM settings for this build a single-use Daemon process will be forked. See https://docs.gradle.org/7.4/userguide/gradle_daemon.html#sec:disabling_the_daemon.
+Daemon will be stopped at the end of the build 
+> Task :shared:compileKotlin UP-TO-DATE
+> Task :shared:compileJava NO-SOURCE
+> Task :shared:processResources NO-SOURCE
+> Task :shared:classes UP-TO-DATE
+> Task :shared:jar UP-TO-DATE
+> Task :mobile:preBuild UP-TO-DATE
+> Task :mobile:preDebugBuild UP-TO-DATE
+> Task :mobile:compileDebugAidl NO-SOURCE
+> Task :mobile:compileDebugRenderscript NO-SOURCE
+> Task :mobile:dataBindingMergeDependencyArtifactsDebug UP-TO-DATE
+> Task :mobile:generateDebugResValues UP-TO-DATE
+> Task :mobile:generateDebugResources UP-TO-DATE
+> Task :mobile:mergeDebugResources UP-TO-DATE
+> Task :mobile:packageDebugResources UP-TO-DATE
+> Task :mobile:parseDebugLocalResources UP-TO-DATE
+> Task :mobile:dataBindingGenBaseClassesDebug UP-TO-DATE
+> Task :mobile:generateDebugBuildConfig UP-TO-DATE
+> Task :mobile:checkDebugAarMetadata UP-TO-DATE
+> Task :mobile:mapDebugSourceSetPaths UP-TO-DATE
+> Task :mobile:createDebugCompatibleScreenManifests UP-TO-DATE
+> Task :mobile:extractDeepLinksDebug UP-TO-DATE
+> Task :mobile:processDebugMainManifest UP-TO-DATE
+> Task :mobile:processDebugManifest UP-TO-DATE
+> Task :mobile:processDebugManifestForPackage UP-TO-DATE
+> Task :mobile:processDebugResources UP-TO-DATE
+
+> Task :mobile:compileDebugKotlin FAILED
+.\gradlew : e: file:///D:/SEMESTER12/SkripiDump/4_Hear
+tMonitor/mobile/src/main/java/com/example/samplewearmo
+bileapp/MainActivity.kt:2398:13 'when' expression 
+must be exhaustive, add necessary 'else' branch
+At line:1 char:1
++ .\gradlew :mobile:compileDebugKotlin --no-daemon 
+2>&1 | Out-File -Fil ...
++ 
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (e: 
+file:///D:/S...y 'else' branc    h:String) [], 
+RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+e: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/mob
+ile/src/main/java/com/example/samplewearmobileapp/Main
+Activity.kt:2400:21 'if' must have both main and 
+'else' branches if used as an expression
+e: file:///D:/SEMESTER12/SkripiDump/4_HeartMonitor/mob
+ile/src/main/java/com/example/samplewearmobileapp/Main
+Activity.kt:2408:21 'when' expression must be 
+exhaustive, add necessary 'else' branch
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task 
+':mobile:compileDebugKotlin'.
+> A failure occurred while executing org.jetbrains.kot
+lin.compilerRunner.GradleCompilerRunnerWithWorkers$Gra
+dleKotlinCompilerWorkAction
+   > Compilation error. See log for more details
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log 
+output.
+> Run with --scan to get full insights.
+
+* Get more help at https://help.gradle.org
+
+BUILD FAILED in 37s
+18 actionable tasks: 1 executed, 17 up-to-date

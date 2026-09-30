@@ -5,7 +5,8 @@ import android.util.Log
 import com.androidplot.util.PixelUtils
 import com.androidplot.xy.*
 import com.example.samplewearmobileapp.Constants.MICRO_TO_MILLI_VOLT
-import com.example.samplewearmobileapp.Constants.NANO_TO_MICRO_SEC
+import com.example.samplewearmobileapp.Constants.ECG_SAMPLE_RATE
+import com.example.samplewearmobileapp.utils.TimestampHelper
 import com.example.samplewearmobileapp.Constants.N_DOMAIN_LARGE_BOXES
 import com.example.samplewearmobileapp.Constants.N_ECG_PLOT_POINTS
 import com.example.samplewearmobileapp.Constants.N_LARGE
@@ -146,9 +147,6 @@ class EcgPlotter: PlotterListener {
             plot.setDomainStep(StepMode.INCREMENT_BY_VAL, .2 * N_LARGE)
             plot.linesPerDomainLabel = 5
 
-//        // Allow panning
-//        PanZoom.attach(mPlot, PanZoom.Pan.HORIZONTAL, PanZoom.Zoom.NONE);
-
             // Update the plot
             update()
         } catch (ex: Exception) {
@@ -162,6 +160,18 @@ class EcgPlotter: PlotterListener {
     }
 
     /**
+     * Stores timestamps computed during the last addValues() batch,
+     * so QrsDetector can forward them to QrsPlotter without
+     * calling nextEcgTimestamp() a second time.
+     */
+    private var lastBatchTimestamps = LongArray(0)
+
+    /**
+     * Returns timestamps computed during the most recent addValues() call.
+     */
+    fun getLastBatchTimestamps(): LongArray = lastBatchTimestamps
+
+    /**
      * Implements a strip chart adding new data at the end.
      *
      * @param polarEcgData The data that came in.
@@ -169,6 +179,9 @@ class EcgPlotter: PlotterListener {
     fun addValues(polarEcgData: PolarEcgData) {
         val sampleCount = polarEcgData.samples.size
         if (sampleCount == 0) return
+
+        val batchTs = LongArray(sampleCount)
+        var batchIdx = 0
 
         // Add the new values, removing old values if needed
         for (ecgDataSample in polarEcgData.samples) {
@@ -180,11 +193,14 @@ class EcgPlotter: PlotterListener {
             seriesVisible.addLast(dataIndex, MICRO_TO_MILLI_VOLT * ecgDataSample.voltage)
             // Add the value to the all series as well
             seriesAll.addLast(dataIndex, MICRO_TO_MILLI_VOLT * ecgDataSample.voltage)
-            seriesTimestamp.addLast(dataIndex,
-                (NANO_TO_MICRO_SEC * ecgDataSample.timeStamp).toLong().adjustEpoch()
+            val normalizedTimestamp = TimestampHelper.nextEcgTimestamp(
+                ECG_SAMPLE_RATE.toDouble()
             )
+            seriesTimestamp.addLast(dataIndex, normalizedTimestamp)
+            batchTs[batchIdx++] = normalizedTimestamp
             dataIndex++
         }
+        lastBatchTimestamps = batchTs
         // Reset the domain boundaries
         updateDomainBoundaries()
         update()
@@ -319,9 +335,5 @@ class EcgPlotter: PlotterListener {
 
     companion object {
         private const val TAG = "EcgPlotter"
-
-        private fun Long.adjustEpoch(): Long {
-            return this + Date(2000 - 1900, 0, 1).time
-        }
     }
 }

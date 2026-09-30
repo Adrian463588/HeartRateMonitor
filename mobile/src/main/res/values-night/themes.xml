@@ -1,5 +1,5 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
-    <!-- Base application theme. -->
+    <!-- Base application theme — Dark Mode override. -->
     <style name="Theme.SampleWearMobileApp" parent="Theme.MaterialComponents.DayNight.DarkActionBar">
         <!-- Primary brand color. -->
         <item name="colorPrimary">@color/purple_200</item>
@@ -11,6 +11,40 @@
         <item name="colorOnSecondary">@color/black</item>
         <!-- Status bar color. -->
         <item name="android:statusBarColor">?attr/colorPrimaryVariant</item>
-        <!-- Customize your theme here. -->
+        <!--
+            DRY: same attr as light theme — override for Dark Mode dialogs.
+            All dialogs automatically use the night variant when in dark mode.
+        -->
+        <item name="alertDialogTheme">@style/AppAlertDialogTheme.Night</item>
     </style>
-</resources>
+
+    <!--
+        AppAlertDialogTheme.Night — Dark Mode
+        SRP: only responsible for night-mode dialog appearance.
+        Inherits from Dark Dialog parent so background is automatically dark.
+        White text + teal buttons = high contrast on dark surface.
+    -->
+    <style name="AppAlertDialogTheme.Night" parent="Theme.AppCompat.Dialog.Alert">
+        <item name="colorPrimary">@color/purple_200</item>
+        <item name="colorAccent">@color/teal_200</item>
+        <!-- White text on dark background -->
+        <item name="android:textColorPrimary">@android:color/white</item>
+        <item name="android:textColorSecondary">#BDBDBD</item>
+        <!-- EditText text color inside dark dialog -->
+        <item name="android:editTextColor">@android:color/white</item>
+        <!-- Button text — teal on dark for high visibility -->
+        <item name="buttonBarPositiveButtonStyle">@style/DialogButtonStyle.Night</item>
+        <item name="buttonBarNegativeButtonStyle">@style/DialogButtonStyle.Night</item>
+        <item name="buttonBarNeutralButtonStyle">@style/DialogButtonStyle.Night</item>
+    </style>
+
+    <!--
+        DialogButtonStyle.Night — Dark Mode
+        DRY: reused for all three button types in night dialogs.
+    -->
+    <style name="DialogButtonStyle.Night" parent="Widget.AppCompat.Button.ButtonBar.AlertDialog">
+        <item name="android:textColor">@color/teal_200</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:textAllCaps">true</item>
+    </style>
+</resources>

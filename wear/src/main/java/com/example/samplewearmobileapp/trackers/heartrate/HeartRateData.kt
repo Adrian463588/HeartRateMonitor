@@ -14,9 +14,6 @@ class HeartRateData {
         this.qIbi = qIbi
     }
 
-//    val hrIbi: Int
-//        get() = qIbi shl IBI_QUALITY_SHIFT or ibi
-
     companion object {
         const val IBI_QUALITY_SHIFT = 15
         const val IBI_QUALITY_MASK = 0x1
