@@ -1,6 +1,5 @@
 package com.example.samplewearmobileapp
 
-import android.Manifest
 import android.bluetooth.BluetoothAdapter.*
 import android.bluetooth.BluetoothManager
 import android.content.*
@@ -100,7 +99,6 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
 //    private var message: Message = Message(PHONE_APP)
     private var wearMessage: Message? = null
     private var appState = 0
-    private var bluetoothState = STATE_OFF
     private var isBluetoothReceiverRegistered = false
 
     private var ppgGreenValueNumber = 0
@@ -191,8 +189,8 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
 
     private val bluetoothStateReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
-            bluetoothState = intent.getIntExtra(EXTRA_STATE, STATE_OFF)
-            when (bluetoothState) {
+            if (intent.action != android.bluetooth.BluetoothAdapter.ACTION_STATE_CHANGED) return
+            when (intent.getIntExtra(EXTRA_STATE, STATE_OFF)) {
                 STATE_TURNING_OFF -> {
                     Toast.makeText(context,
                         "Bluetooth turning off",
@@ -290,11 +288,9 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
         deviceId = sharedPreferences!!.getString(
             PREF_DEVICE_ID,
             ""
-        ).toString()
+        ).orEmpty()
         Log.d(
-            TAG, "settingsLauncher: resultCode=" + code
-                    + " oldDeviceId=" + oldDeviceId
-                    + " DeviceId=" + deviceId
+            TAG, "settingsLauncher: resultCode=$code deviceChanged=${oldDeviceId != deviceId}"
         )
         if (oldDeviceId != deviceId) {
             resetDeviceId(oldDeviceId)
@@ -428,11 +424,10 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
 //        stopTime = Date()
 
         // get device ID from preferences if there is any
-        deviceId = sharedPreferences!!.getString(PREF_DEVICE_ID, "").toString()
-        Log.d(TAG, "DeviceId=$deviceId")
+        deviceId = sharedPreferences!!.getString(PREF_DEVICE_ID, "").orEmpty()
 
         // register bluetooth state broadcast receiver
-        registerReceiver(bluetoothStateReceiver, BluetoothService.BLUETOOTH_STATE_FILTER)
+        registerBluetoothStateReceiver()
 
         // build Google API Client with access to Wearable API
         client = GoogleApiClient.Builder(this)
@@ -806,11 +801,6 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
         Wearable.DataApi.addListener(client) { data ->
 //            Log.d(TAG, "Data count arrived : ${data.count}")
             for (dataEvent in data) {
-                Log.d(TAG, "Data Event\n" +
-                        "URI Last Path Segment: ${dataEvent.dataItem.uri.lastPathSegment}\n" +
-                        "URI Path: ${dataEvent.dataItem.uri.path}\n" +
-                        "URI encoded path: ${dataEvent.dataItem.uri.encodedPath}\n" +
-                        "URI Host: ${dataEvent.dataItem.uri.host}")
                 onDataArrived(dataEvent)
             }
         }
@@ -857,23 +847,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
         when (requestCode) {
             REQUEST_CODE_PERMISSIONS -> {
                 if (allPermissionsGranted()) {
-                    // Check if we need to request background location separately
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && 
-                        BACKGROUND_PERMISSIONS.isNotEmpty() &&
-                        ContextCompat.checkSelfPermission(
-                            this, 
-                            Manifest.permission.ACCESS_BACKGROUND_LOCATION
-                        ) != PackageManager.PERMISSION_GRANTED) {
-                        // Request background location permission
-                        ActivityCompat.requestPermissions(
-                            this, 
-                            BACKGROUND_PERMISSIONS, 
-                            REQUEST_CODE_BACKGROUND_PERMISSIONS
-                        )
-                    } else {
-                        // All permissions granted, setup Bluetooth
-                        setupBluetooth()
-                    }
+                    setupBluetooth()
                 } else {
                     Toast.makeText(this,
                         "Permissions not granted. Some features may not work. " +
@@ -881,25 +855,12 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
                         Toast.LENGTH_LONG).show()
                 }
             }
-            REQUEST_CODE_BACKGROUND_PERMISSIONS -> {
-                // Background location permission result
-                if (grantResults.isNotEmpty() && 
-                    grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                    Log.d(TAG, "Background location permission granted")
-                } else {
-                    Toast.makeText(this,
-                        "Background location permission denied. Some features may be limited.",
-                        Toast.LENGTH_LONG).show()
-                }
-                // Continue with Bluetooth setup regardless
-                setupBluetooth()
-            }
         }
     }
 
     override fun onSharedPreferenceChanged(
         sharedPreferences: SharedPreferences?,
-        key: String
+        key: String?
     ) {
         Log.d(TAG, "onSharedPreferenceChanged: key=$key")
     }
@@ -967,12 +928,8 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
      * the Polar API, connection, and plot setup.
      */
     private fun setupPolar() {
-        Log.d(
-            TAG, this.javaClass.simpleName + " restart:"
-                    + " PolarApi=" + polarApi
-                    + " DeviceId=" + deviceId
-        )
-        if (polarApi != null || deviceId == null || deviceId.isEmpty()) {
+        Log.d(TAG, "setupPolar: apiInitialized=${polarApi != null}")
+        if (polarApi != null || deviceId.isEmpty()) {
             return
         }
         if (ecgDisposable != null) {
@@ -1019,7 +976,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
             }
 
             override fun deviceConnected(polarDeviceInfo: PolarDeviceInfo) {
-                Log.d(TAG, "*Device connected " + polarDeviceInfo.deviceId)
+                Log.d(TAG, "Polar device connected")
                 deviceAddress = polarDeviceInfo.address
                 deviceName = polarDeviceInfo.name
                 isPolarDeviceConnected = true
@@ -1037,7 +994,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
             }
 
             override fun deviceDisconnected(polarDeviceInfo: PolarDeviceInfo) {
-                Log.d(TAG, "*Device disconnected $polarDeviceInfo")
+                Log.d(TAG, "Polar device disconnected")
                 isPolarDeviceConnected = false
                 runOnUiThread {
                     textEcgStatus.text = getString(R.string.ecg_status,
@@ -1067,7 +1024,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
             }
 
             override fun hrFeatureReady(identifier: String) {
-                Log.d(TAG, "*HR Feature ready $identifier")
+                Log.d(TAG, "Polar HR feature ready")
             }
 
             override fun disInformationReceived(
@@ -1081,7 +1038,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
                     )
                 ) {
                     deviceFirmware = value.trim { it <= ' ' }
-                    Log.d(TAG, "*Firmware: $identifier $deviceFirmware")
+                    Log.d(TAG, "Polar firmware received")
                     textEcgInfo.text = getString(
                         R.string.info_string,
                         deviceName, deviceBatteryLevel, deviceFirmware, deviceId
@@ -1091,7 +1048,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
 
             override fun batteryLevelReceived(identifier: String, level: Int) {
                 deviceBatteryLevel = level.toString()
-                Log.d(TAG, "*Battery level $identifier $level")
+                Log.d(TAG, "Polar battery level received")
                 textEcgInfo.text = getString(
                     R.string.info_string,
                     deviceName, deviceBatteryLevel, deviceFirmware, deviceId
@@ -1168,8 +1125,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
         // try connect to device
         try {
             polarApi!!.connectToDevice(deviceId)
-            Log.d(TAG, "Connecting to Polar device...\n" +
-                    "DeviceId: $deviceId")
+            Log.d(TAG, "Connecting to Polar device")
             runOnUiThread {
                 textEcgStatus.text = getString(R.string.ecg_status,
                     getString(R.string.status_connecting))
@@ -1183,10 +1139,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
             setLastHr()
             stopTime = Date()
         } catch (ex: PolarInvalidArgument) {
-            val msg = """
-                DeviceId=$deviceId
-                ConnectToDevice: Bad argument:
-                """.trimIndent()
+            val msg = "ConnectToDevice: Bad argument"
             AppUtils.excMsg(this, msg, ex)
             Log.d(TAG, "connectPolarDevice: $msg")
 //            isPlaying = false
@@ -1256,10 +1209,9 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
         setAnalysisVisibility()
 
         // Start the connection to the device
-        Log.d(TAG, "DeviceId=$deviceId")
         Log.d(TAG, "polarApi=$polarApi")
-        deviceId = sharedPreferences?.getString(PREF_DEVICE_ID, "").toString()
-        if (deviceId == null || deviceId.isEmpty()) {
+        deviceId = sharedPreferences?.getString(PREF_DEVICE_ID, "").orEmpty()
+        if (deviceId.isEmpty()) {
             Toast.makeText(
                 this,
                 getString(R.string.no_device),
@@ -1295,9 +1247,18 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
         Log.i(TAG,"Lifecycle: onRestart()")
         // re-register bluetooth state receiver (guard against duplicate registration)
         if (!isBluetoothReceiverRegistered) {
-            registerReceiver(bluetoothStateReceiver, BluetoothService.BLUETOOTH_STATE_FILTER)
-            isBluetoothReceiverRegistered = true
+            registerBluetoothStateReceiver()
         }
+    }
+
+    private fun registerBluetoothStateReceiver() {
+        ContextCompat.registerReceiver(
+            this,
+            bluetoothStateReceiver,
+            BluetoothService.BLUETOOTH_STATE_FILTER,
+            ContextCompat.RECEIVER_EXPORTED
+        )
+        isBluetoothReceiverRegistered = true
     }
 
     override fun onStop() {
@@ -1585,7 +1546,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
 
         val input = viewInflated.findViewById<EditText>(R.id.input)
         input.inputType = InputType.TYPE_CLASS_TEXT
-        deviceId = sharedPreferences?.getString(PREF_DEVICE_ID, "").toString()
+        deviceId = sharedPreferences?.getString(PREF_DEVICE_ID, "").orEmpty()
         input.setText(deviceId)
         dialog.setView(viewInflated)
 
@@ -1594,15 +1555,11 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
         ) { _, _ ->
             val oldDeviceId: String = deviceId
             deviceId = input.text.toString()
-            Log.d(
-                TAG, "showDeviceIdDialog: OK:  oldDeviceId="
-                        + oldDeviceId + " newDeviceId="
-                        + deviceId
-            )
+            Log.d(TAG, "showDeviceIdDialog: deviceChanged=${oldDeviceId != deviceId}")
             val editor: SharedPreferences.Editor = sharedPreferences!!.edit()
             editor.putString(PREF_DEVICE_ID, deviceId)
             editor.apply()
-            if (deviceId == null || deviceId.isEmpty()) {
+            if (deviceId.isEmpty()) {
                 Toast.makeText(
                     this@MainActivity,
                     getString(R.string.no_device),
@@ -1615,12 +1572,9 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
         dialog.setNegativeButton(
             R.string.cancel
         ) { dialog1, _ ->
-            Log.d(
-                TAG,
-                "showDeviceIdDialog: Cancel:  mDeviceId=$deviceId"
-            )
+            Log.d(TAG, "showDeviceIdDialog: Cancel")
             dialog1.cancel()
-            if (deviceId == null || deviceId.isEmpty()) {
+            if (deviceId.isEmpty()) {
                 Toast.makeText(
                     this@MainActivity,
                     getString(R.string.no_device),
@@ -1647,10 +1601,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
             try {
                 polarApi!!.disconnectFromDevice(oldDeviceId)
             } catch (ex: PolarInvalidArgument) {
-                val msg = """
-                oldDeviceId=$oldDeviceId
-                DisconnectFromDevice: Bad argument:
-                """.trimIndent()
+                val msg = "DisconnectFromDevice: Bad argument"
                 AppUtils.excMsg(this@MainActivity, msg, ex)
                 Log.d(
                     TAG, this.javaClass.simpleName
@@ -2353,27 +2304,16 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
 
         when (dataEvent.dataItem.uri.path) {
             MessagePath.DATA_HR -> {
-                val heartData = Gson().fromJson(String(dataEvent.dataItem.data),
-                    HeartData::class.java)
-                Log.d(TAG, "Heart Rate data received\n" +
-                        "HR: ${heartData.hr}\n" +
-                        "IBI: ${heartData.ibi}\n" +
-                        "Timestamp: ${heartData.timestamp}")
+                Log.d(TAG, "Heart rate data received")
             }
             MessagePath.DATA_PPG_GREEN -> {
                 val ppgGreenData = Gson().fromJson(String(dataEvent.dataItem.data),
                     PpgData::class.java)
-                Log.d(TAG, "PPG Green data batch received\n" +
-                        "Data count: ${ppgGreenData.size}\n" +
-                        "PPG Green Value: ${ppgGreenData.ppgValues}\n" +
-                        "Timestamp: ${ppgGreenData.timestamps}")
+                Log.d(TAG, "PPG Green batch received: ${ppgGreenData.size} samples")
                 for (i in 0 until ppgGreenData.size) {
                     ppgGreenPlotter?.addValues(
                         ppgGreenData.ppgValues[i],
                         ppgGreenData.timestamps[i])
-                    Log.d(TAG, "Data #$i\n" +
-                            "PPG Value: ${ppgGreenData.ppgValues[i]}\n" +
-                            "Timestamp: ${ppgGreenData.timestamps[i]}")
                 }
                 ppgGreenValueNumber += ppgGreenData.size
 
@@ -2392,9 +2332,6 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
                     ppgIrPlotter?.addValues(
                         ppgIrData.ppgValues[i],
                         ppgIrData.timestamps[i])
-                    Log.d(TAG, "Data #$i\n" +
-                            "PPG Value: ${ppgIrData.ppgValues[i]}\n" +
-                            "Timestamp: ${ppgIrData.timestamps[i]}")
                 }
                 ppgIrValueNumber += ppgIrData.size
 
@@ -2407,17 +2344,11 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
             MessagePath.DATA_PPG_RED -> {
                 val ppgRedData = Gson().fromJson(String(dataEvent.dataItem.data),
                     PpgData::class.java)
-                Log.d(TAG, "PPG Red data batch received\n" +
-                        "Data count: ${ppgRedData.size}\n" +
-                        "PPG Red Value: ${ppgRedData.ppgValues}\n" +
-                        "Timestamp: ${ppgRedData.timestamps}")
+                Log.d(TAG, "PPG Red batch received: ${ppgRedData.size} samples")
                 for (i in 0 until ppgRedData.size) {
                     ppgRedPlotter?.addValues(
                         ppgRedData.ppgValues[i],
                         ppgRedData.timestamps[i])
-                    Log.d(TAG, "Data #$i\n" +
-                            "PPG Value: ${ppgRedData.ppgValues[i]}\n" +
-                            "Timestamp: ${ppgRedData.timestamps[i]}")
                 }
                 ppgRedValueNumber += ppgRedData.size
 
@@ -2439,7 +2370,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
                 }
             }
             MessagePath.REQUEST -> {
-                Log.d(TAG, "Received REQUEST message from wear: ${message.content}")
+                Log.d(TAG, "Received REQUEST message from wear")
             }
             MessagePath.INFO -> {
                 when (message.code) {
@@ -2660,30 +2591,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
         // Currently the sampling rate for ECG is fixed at 130
 //        private const val MAX_DEVICES = 3
         const val REQUEST_CODE_PERMISSIONS = 10
-        const val REQUEST_CODE_BACKGROUND_PERMISSIONS = 11
-        private val REQUIRED_PERMISSIONS =
-            mutableListOf(
-                Manifest.permission.ACCESS_COARSE_LOCATION,
-                Manifest.permission.ACCESS_FINE_LOCATION
-            ).apply {
-                if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.R) {
-                    add(Manifest.permission.BLUETOOTH)
-                    add(Manifest.permission.BLUETOOTH_ADMIN)
-                }
-            }.apply {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    add(Manifest.permission.BLUETOOTH_SCAN)
-                    add(Manifest.permission.BLUETOOTH_CONNECT)
-                }
-            }.toTypedArray()
-        
-        // Background location must be requested separately after foreground permissions
-        private val BACKGROUND_PERMISSIONS =
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                arrayOf(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
-            } else {
-                emptyArray()
-            }
+        private val REQUIRED_PERMISSIONS = requiredBluetoothPermissions(Build.VERSION.SDK_INT)
     }
 
     private fun logEpochInfo(timeZoneString: String) {

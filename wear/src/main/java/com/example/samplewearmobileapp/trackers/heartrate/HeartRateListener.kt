@@ -62,6 +62,5 @@ class HeartRateListener internal constructor() : Listener() {
         hrData.qIbi = (rawIbi shr HeartRateData.IBI_QUALITY_SHIFT) and HeartRateData.IBI_QUALITY_MASK
         hrData.ibi  = rawIbi and HeartRateData.IBI_MASK
 
-        Log.d(tag, "HR=${hrData.hr} IBI=${hrData.ibi} status=${hrData.status}")
     }
 }

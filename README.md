@@ -1,107 +1,50 @@
-# HeartRateMonitor: Dual-Module Vitals Tracking
+# HeartRateMonitor
 
+Android phone and Galaxy Watch app for recording Polar ECG and Samsung Watch PPG. The watch collects green, infrared, and red PPG; the phone connects to Polar over Bluetooth, shows live plots, and can save recordings as CSV. This is a development tool for biosignal collection, not a medical diagnosis app.
 
-> **Elevator Pitch:** A robust, dual-module Android system (Mobile + Wear OS) that provides real-time sensing and synchronization of PPG (via Samsung Galaxy Watch) and ECG (via Polar sensors) data for advanced vital signs monitoring.
+## Debug APKs
 
-![Kotlin](https://img.shields.io/badge/Kotlin-1.8-blue.svg) 
-![Platform](https://img.shields.io/badge/Platform-Android%20%7C%20Wear%20OS-green.svg) 
-![Status](https://img.shields.io/badge/Status-Active-success.svg)
+| Device | Version | Download |
+| --- | --- | --- |
+| Android phone | `1.2.0` (`versionCode 3`) | [mobile-debug.apk](https://github.com/Adrian463588/HeartRateMonitor/releases/download/debug-2026-10-01/mobile-debug.apk) |
+| Galaxy Watch | `1.1.0` (`versionCode 2`) | [wear-debug.apk](https://github.com/Adrian463588/HeartRateMonitor/releases/download/debug-2026-10-01/wear-debug.apk) |
 
-## 📂 Project Structure
+These are debug builds for development and testing. Install each APK on its corresponding device. Both APKs must be signed with the same key for Wear OS Data Layer communication; the linked pair is built together. The Samsung Health Sensor SDK works on supported Galaxy Watch4 or newer hardware, not a watch emulator. Sensor access may return `SDK_POLICY_ERROR` until Samsung authorizes the app's package and signing certificate. Do not treat APK installation alone as proof that PPG or ECG collection works.
 
-This project is organized into three main modules:
+## Build from source
 
-| Module | Path | Description |
-| :--- | :--- | :--- |
-| **Wear App** | `/wear` | The data producer. Runs on the Samsung Galaxy Watch, collecting PPG data via Samsung Health SDK. |
-| **Mobile App** | `/mobile` | The data consumer. Runs on the Android Phone, connecting to Polar ECG via BLE and receiving PPG data from the Watch. |
-| **Shared** | `/shared` | Contains common data models, constants, and utility classes shared between Mobile and Wear modules. |
+1. Install Android Studio, Android SDK platform 34, and JDK 21. The project uses Gradle 8.6, Android Gradle Plugin 8.4.0, and Kotlin 2.1.0. Open the repository root in Android Studio.
+2. Download **Samsung Health Sensor SDK v1.4.1** from the [Samsung Developer SDK page](https://developer.samsung.com/health/sensor/overview.html) under your own Samsung license. Extract `samsung-health-sensor-api.aar` and place it at `wear/libs/samsung-health-sensor-api-1.4.1.aar`. The existing `wear/build.gradle` loads `wear/libs/*.aar`. Do not commit the AAR, SDK archive, signing keys, or local configuration. See Samsung's [AAR import guide](https://developer.samsung.com/health/sensor/guide/app-module.html) and [app creation process](https://developer.samsung.com/health/sensor/process.html).
+3. Build and check both modules:
 
-## 🚀 How to Run this Project
+   ```powershell
+   .\gradlew.bat :mobile:assembleDebug :wear:assembleDebug :mobile:lintDebug :wear:lintDebug :mobile:testDebugUnitTest :wear:testDebugUnitTest
+   ```
 
-Follow these steps to set up and run the application on your devices.
+4. Find local outputs at `mobile/build/outputs/apk/debug/mobile-debug.apk` and `wear/build/outputs/apk/debug/wear-debug.apk`. Build them on the same machine, or use the linked pair, so their debug signing certificates match.
 
-### Step 1: Prerequisites
+The SDK AAR is intentionally absent from Git. Without it, the watch module cannot compile; obtain it from Samsung rather than copying an old AAR from Git history. Samsung requires partner approval and package/signature registration for public sensor access; its developer mode is for development testing. See the [Samsung app verification guide](https://developer.samsung.com/health/sensor/guide/app-verification.html).
 
-*   **Android Studio Hedgehog** (or newer).
-*   **Samsung Health SDK Library**: You must have the Samsung Health SDK `.aar` library.
-*   **Devices**:
-    *   Samsung Galaxy Watch 4/5/6+ (with Developer Mode enabled).
-    *   Android Phone (Android 10+).
+## Run and use
 
-### Step 2: Installation
+- **Phone:** Android 9+ (`minSdk 28`), Bluetooth enabled, and a compatible Polar ECG device such as Polar H10. Grant Bluetooth permissions; Android 11 and earlier also require location permission for BLE scanning.
+- **Watch:** Samsung Galaxy Watch4 or newer with Wear OS (`minSdk 30`), paired with the phone. Grant Body Sensors and Activity Recognition permissions. On supported versions, background sensor access is requested separately.
+- Select a Polar device on the phone, connect the watch, start recording, and inspect the live plots. Choose an export folder when saving CSV. Check sensor and connection status on both devices if data is missing.
+- The watch SDK does not run on an emulator. A successful Gradle build verifies compilation, tests, and static checks; real PPG/ECG acquisition still needs physical devices and authorized sensor access.
 
-1.  **Clone the Repository**
-    ```bash
-    git clone https://github.com/Adrian463588/HeartRateMonitor.git
-    ```
-2.  **Open in Android Studio**
-    *   Select the root directory of the cloned project.
-    *   Allow Gradle to sync completely (this may take a few minutes).
+## Repository layout
 
-### Step 3: Configure Samsung SDK Library
+| Module | Purpose |
+| --- | --- |
+| `mobile/` | Phone UI, Polar BLE, plotting, CSV export, Wear Data Layer consumer |
+| `wear/` | Galaxy Watch UI, Samsung Health Sensor SDK trackers, Wear Data Layer producer |
+| `shared/` | Shared message and data types |
 
-> [!CAUTION]
-> **Library Requirement:** This project depends on the Samsung Health SDK.
-> You must manually place the SDK library file (`.aar`) in the project if it is not already present.
+## Version log
 
-1.  Navigate to `wear/libs/` in your project view.
-2.  **Verify** that the Samsung Health SDK `.aar` file is present (specifically `priv-health-tracking-v1.2.0.aar` or similar).
-3.  If missing, download it from the Samsung Developer website and paste it into `wear/libs/`.
-4.  Sync Gradle.
+| Date | Phone | Watch | Changes |
+| --- | --- | --- | --- |
+| 2026-10-01 | `1.2.0` (3) | `1.1.0` (2) | Merged the checked-out `fix-issue-2` implementation into this fork's `main`; updated build tools and privacy settings; removed generated files and Samsung AAR from reachable Git history. |
+| Before merge | `1.1` (2) | `1.0` (1) | Fork `main` baseline; see Git history for earlier changes. |
 
-### Step 4: Deploy to Devices
-
-**Deploying the Mobile App:**
-1.  Connect your Android Phone via USB or Wi-Fi debugging.
-2.  In Android Studio toolbar, select the **mobile** run configuration.
-3.  Click the **Run (Green Play)** button.
-
-**Deploying the Wear App:**
-1.  Connect your Galaxy Watch via Wireless Debugging (*Settings -> Developer Options -> Wireless Debugging*).
-2.  In Android Studio toolbar, select the **wear** run configuration.
-3.  Click the **Run (Green Play)** button.
-
-### Step 5: Grant Permissions
-
-*   **On Watch:** Launch the app. You **MUST** accept the **Body Sensors** permission prompt immediately.
-*   **On Phone:** Launch the app. Accept **Bluetooth** and **Location** permissions to enable scanning.
-
-## ✨ Key Features
-
-*   **Multi-Channel PPG:** Simultaneous recording of Green, Infrared (IR), and Red light photoplethysmography.
-*   **High-Fidelity ECG:** Direct integration with Polar H10 and Verity Sense sensors.
-*   **Real-Time Sync:** Sub-second latency synchronization (state & data) between Watch and Phone.
-*   **Live Plotting:** Dynamic visualization of waveforms on the mobile dashboard.
-*   **Background Recording:** Robust foreground services ensure data collection continues even when the screen is off.
-
-## 🔐 Critical Permissions
-
-The app requires specific permissions to function correctly.
-
-### Wear OS
-| Permission | Reason |
-| :--- | :--- |
-| `BODY_SENSORS` | **Critical:** Access raw PPG sensor data. |
-| `FOREGROUND_SERVICE` | Keep recording alive in the background. |
-| `WAKE_LOCK` | Prevent CPU sleep during critical sampling. |
-
-### Mobile
-| Permission | Reason |
-| :--- | :--- |
-| `BLUETOOTH_CONNECT` | Connect to Polar and Watch devices. |
-| `BLUETOOTH_SCAN` | Discover BLE peripherals. |
-| `ACCESS_FINE_LOCATION` | Required for BLE scanning (Android 11 and below). |
-
-## 🛠️ Troubleshooting
-
-*   **Build Fails (Missing Library):**
-    *   **Cause:** The Samsung Health SDK `.aar` file (e.g., `priv-health-tracking-v1.2.0.aar`) is missing from `wear/libs/`.
-    *   **Fix:** Download the SDK from Samsung and place it in the `libs` folder.
-*   **Data Not Syncing:**
-    *   **Cause:** Bluetooth disconnected or Battery Optimization pending.
-    *   **Fix:** Ensure both devices are connected. Check if "Battery Saver" is interfering with the background service.
-
----
-
-*Verified for Android 13 (API 33) and Wear OS 3.5+.*
+For merge provenance, test results, and remaining device verification, see [MERGE_AUDIT.md](MERGE_AUDIT.md). Report bugs with device model, Android/Wear OS version, steps, and relevant error text. Do not include recordings, patient names, signing keys, or SDK AARs in issues.

@@ -387,7 +387,7 @@ class MainActivity :
             when (messagePath) {
                 MessagePath.COMMAND -> handleCommandMessage(msg)
                 MessagePath.REQUEST -> handleRequestMessage(msg)
-                MessagePath.INFO    -> Log.d(tag, "INFO path received (not yet implemented): $msg")
+                MessagePath.INFO    -> Log.d(tag, "INFO path received (not yet implemented)")
                 MessagePath.DATA_PPG_GREEN -> handlePpgMessage(msg, ppgGreenListener,
                     showContainer = { showPpgGreenContainer() },
                     stopStatus   = { setPpgGreenStatus(R.string.status_stopped) })
@@ -615,7 +615,7 @@ class MainActivity :
                 val bytes = gson.toJson(message).toByteArray()
                 nodes.forEach { node ->
                     messageClient.sendMessage(node.id, path, bytes).await()
-                    Log.i(tag, "Message sent to ${node.displayName} — path=$path msg=$message")
+                    Log.i(tag, "Message sent to phone — path=$path")
                 }
             }.onFailure { e ->
                 Log.e(tag, "sendMessageToPhone failed: ${e.message}")
