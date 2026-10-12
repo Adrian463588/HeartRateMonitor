@@ -26,8 +26,9 @@
 - [x] CI uses full action commit SHAs, `contents: read`, no persisted checkout credentials, bounded jobs, Gitleaks binary SHA-256 and Gradle distribution SHA-256.
 - [x] Publication policy rejects current tracked forbidden files and every incoming commit's added/modified/renamed paths, including deleted-later bundles. Five policy tests passed.
 - [x] Staged tracked-tree Gitleaks scan passed (no findings); publication policy passed for **201 paths / 7 incoming commits** before the integration commit. `git diff --cached --check` passed after normalizing the two inherited theme XML line endings; resource values are unchanged.
-- [ ] Exact prepared-head and PR CI.
-- [ ] PR creation, non-squash merge and resulting main/post-merge CI verification.
+- [x] Exact prepared head `f3e84f64c61e492c2d7f2e1db8a99403368c2946`: [push CI](https://github.com/Adrian463588/HeartRateMonitor/actions/runs/38294072262) and [PR CI](https://github.com/Adrian463588/HeartRateMonitor/actions/runs/38294078210) both passed publication-safety and phone-and-shared.
+- [x] [PR #1](https://github.com/Adrian463588/HeartRateMonitor/pull/1) merged using a two-parent merge commit; [post-merge main CI](https://github.com/Adrian463588/HeartRateMonitor/actions/runs/38294595356) passed.
+- [x] Main branch protection requires both GitHub Actions checks, up-to-date branches and resolved conversations, including for admins; force-push/deletion are disabled and merge commits remain allowed. No admin bypass or forged/self-approval was used.
 
 No AAR exists in either initial source tree. Both histories already contain
 Polar AAR `3526ed159b8c210662b0cc8bd904167f772eda3c` at historical
@@ -46,4 +47,16 @@ No new Samsung/Polar AAR or recording may enter this PR.
 
 ## Delivery receipt
 
-Pending exact candidate commit, PR and resulting main merge SHA/parents/checks.
+Primary [PR #1](https://github.com/Adrian463588/HeartRateMonitor/pull/1) is **MERGED**. Main merge commit: `c63f1e2188385c8609d991d06da1cf2ed561aca0`.
+
+Parents:
+
+1. Original main `db5d56f60dc4ee71be4084623e643af872de984f`.
+2. Prepared Fix-issue `f3e84f64c61e492c2d7f2e1db8a99403368c2946`.
+
+- Both initial branch tips remain ancestors of main. Main and the merged Fix-issue tree were identical; **no squash/rebase** or force-push/tag rewrite occurred. Both branches remain available.
+- Post-merge publication policy passed for **201 tracked paths / 11 incoming commits** relative to original main. Incoming object range contained **0 AAR/APK/AAB/CSV/signing-key paths**.
+- Full-history secret scanning includes first-parent merge diffs. Candidate scan before publication: **121 commits / 1.94 MB, no findings**; current staged-tree scan also found none. CI repeated scanning on exact PR head and resulting main.
+- [Main CI 38294595356](https://github.com/Adrian463588/HeartRateMonitor/actions/runs/38294595356) passed on `c63f1e2188385c8609d991d06da1cf2ed561aca0`. Future changes must satisfy the protected checks.
+- Release tags remain `debug-2026-10-01=db5d56f`, `v1.3.0=563d6c1`, `v1.3.1=97a3469`; existing APK assets were not replaced.
+- This receipt is a documentation-only follow-up to the verified merge; application code/gate configuration are unchanged.
