@@ -1,4 +1,5 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
+    <string name="save_device_hr_data_item">Save Polar HR and RR Data</string>
     <string name="app_name">Sample Wear Mobile App</string>
 <!--    <string name="title">Message Control</string>-->
 
@@ -72,6 +73,7 @@
     <string name="save_ppg_green_data_item">Save PPG Green Data</string>
     <string name="save_ppg_ir_data_item">Save PPG IR Data</string>
     <string name="save_ppg_red_data_item">Save PPG Red Data</string>
+    <string name="save_accelerometer_data_item">Save Accelerometer Data</string>
     <string name="save_all_ppg_data_item">Save All PPG Data</string>
     <string name="save_device_data_item">Save Device HR Data</string>
     <string name="save_qrs_data_item">Save Calculated HR Data</string>

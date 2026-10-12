@@ -2,42 +2,19 @@ package com.example.samplewearmobileapp.trackers
 
 import android.os.Handler
 import android.util.Log
+import com.example.samplewearmobileapp.models.TrackerLifecycle
 import com.samsung.android.service.health.tracking.HealthTracker
 import com.samsung.android.service.health.tracking.HealthTracker.TrackerEventListener
+import com.samsung.android.service.health.tracking.data.DataPoint
 
-/**
- * Base class for all Samsung Health sensor listeners.
- *
- * Manages the lifecycle of a [HealthTracker] by coordinating a
- * [Handler] (on the main looper) and a [TrackerEventListener].
- *
- * **Usage pattern:**
- * 1. Call [setHealthTracker] after obtaining one from [ConnectionManager].
- * 2. Call [setHandler] with a main-thread [Handler].
- * 3. Call [setTrackerEventListener] from the concrete subclass `init {}`.
- * 4. Call [startTracker] / [stopTracker] in response to UX events.
- *
- * **SOLID compliance:**
- * - SRP: handles only lifecycle; data parsing is in each concrete subclass.
- * - OCP: subclasses extend behaviour via [setTrackerEventListener].
- */
 open class Listener {
+    private val tag = "Listener Base Class"
 
-    private val tag = "Listener"
+    private lateinit var handler: Handler
+    private lateinit var healthTracker: HealthTracker
+    private val lifecycle = TrackerLifecycle()
 
-    private var handler: Handler? = null
-    private var healthTracker: HealthTracker? = null
-    private var trackerEventListener: TrackerEventListener? = null
-
-    /** True while the handler has been posted and the tracker is active. */
-    private var isHandlerRunning = false
-
-    /** Public read-only tracking state. */
-    private var isTracking = false
-
-    // -------------------------------------------------------------------------
-    // Configuration setters (called once, by ConnectionManager / subclass init)
-    // -------------------------------------------------------------------------
+    private lateinit var trackerEventListener: TrackerEventListener
 
     fun setHealthTracker(tracker: HealthTracker) {
         healthTracker = tracker
@@ -48,68 +25,67 @@ open class Listener {
     }
 
     fun setHandlerRunning(handlerRunning: Boolean) {
-        isHandlerRunning = handlerRunning
+        if (!handlerRunning) stopTracker()
     }
 
-    fun setTrackerEventListener(listener: TrackerEventListener) {
-        trackerEventListener = listener
+    fun setTrackerEventListener(tracker: TrackerEventListener) {
+        trackerEventListener = tracker
     }
 
-    // -------------------------------------------------------------------------
-    // Lifecycle
-    // -------------------------------------------------------------------------
-
-    /**
-     * Starts the tracker by posting the [healthTracker.setEventListener] call
-     * to the main-thread [Handler].
-     *
-     * Guards against starting twice and against calling before the tracker and
-     * handler have been configured.
-     */
-    fun startTracker() {
-        val tracker = healthTracker
-        val h = handler
-        val listener = trackerEventListener
-
-        if (tracker == null || h == null || listener == null) {
-            Log.e(tag, "startTracker: tracker, handler, or listener not initialised — aborting")
-            return
+    fun startTracker(): Boolean {
+        if (!::healthTracker.isInitialized || !::handler.isInitialized ||
+            !::trackerEventListener.isInitialized) return false
+        return try {
+            lifecycle.start {
+                val registration = lifecycle.generation
+                // Bind callbacks to their registration, including callbacks delivered after Resume.
+                healthTracker.setEventListener(object : TrackerEventListener {
+                    override fun onDataReceived(points: List<DataPoint>) {
+                        val copy = points.toList()
+                        deliver(registration) { trackerEventListener.onDataReceived(copy) }
+                    }
+                    override fun onFlushCompleted() {
+                        deliver(registration) { trackerEventListener.onFlushCompleted() }
+                    }
+                    override fun onError(error: HealthTracker.TrackerError) {
+                        deliver(registration) { trackerEventListener.onError(error) }
+                    }
+                })
+            }
+        } catch (error: RuntimeException) {
+            stopTracker()
+            Log.e(tag, "Tracker registration failed", error)
+            onRegistrationFailed(error)
+            false
         }
-
-        if (isHandlerRunning) {
-            Log.w(tag, "startTracker: already running, ignoring duplicate call")
-            return
-        }
-
-        h.post {
-            tracker.setEventListener(listener)
-            setHandlerRunning(true)
-        }
-        isTracking = true
-        Log.i(tag, "startTracker: started successfully")
     }
 
-    /**
-     * Stops the tracker and removes all pending handler callbacks.
-     *
-     * Safe to call even if the tracker was never started.
-     */
-    fun stopTracker() {
-        val tracker = healthTracker
-        val h = handler
-
-        if (!isHandlerRunning) {
-            Log.d(tag, "stopTracker: not running, nothing to stop")
-            return
+    fun stopTracker(): Boolean {
+        if (::handler.isInitialized) handler.removeCallbacksAndMessages(null)
+        return try {
+            lifecycle.stop { healthTracker.unsetEventListener() }
+        } catch (error: RuntimeException) {
+            Log.w(tag, "Tracker release failed; Stop must retry", error)
+            false
         }
-
-        tracker?.unsetEventListener()
-        h?.removeCallbacksAndMessages(null)
-        setHandlerRunning(false)
-        isTracking = false
-        Log.i(tag, "stopTracker: stopped successfully")
     }
 
-    /** Returns `true` while sensor data is actively being delivered. */
-    fun isTracking(): Boolean = isTracking
+    protected fun postTrackerData(block: () -> Unit) {
+        if (!::handler.isInitialized) return
+        deliver(lifecycle.generation, block)
+    }
+
+    private fun deliver(callbackGeneration: Long, block: () -> Unit) {
+        handler.post {
+            if (lifecycle.accepts(callbackGeneration)) block()
+        }
+    }
+
+    protected open fun onRegistrationFailed(error: RuntimeException) = Unit
+
+    fun isTracking(): Boolean {
+        return lifecycle.requested
+    }
+
+    fun isRegistered(): Boolean = lifecycle.registered
 }

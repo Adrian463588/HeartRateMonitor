@@ -1,5 +1,6 @@
 package com.example.samplewearmobileapp
 
+import android.Manifest
 import android.bluetooth.BluetoothAdapter.*
 import android.bluetooth.BluetoothManager
 import android.content.*
@@ -65,7 +66,6 @@ import com.polar.sdk.api.model.PolarEcgData
 import com.polar.sdk.api.model.PolarHrData
 import com.polar.sdk.api.model.PolarSensorSetting
 import io.reactivex.rxjava3.android.schedulers.AndroidSchedulers
-import io.reactivex.rxjava3.disposables.Disposable
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -74,6 +74,7 @@ import java.io.FileWriter
 import java.io.PrintWriter
 import java.text.SimpleDateFormat
 import java.util.*
+import java.util.concurrent.TimeUnit
 import kotlin.math.roundToLong
 import kotlin.system.exitProcess
 
@@ -82,6 +83,14 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
     private lateinit var binding: ActivityMainBinding
     private lateinit var client: GoogleApiClient
     private lateinit var menu: Menu
+    private val plotUpdateScheduler by lazy { PlotUpdateScheduler() }
+    private var isUiActive = false
+
+    internal fun requestPlotRedraw(plot: XYPlot) {
+        runOnUiThread {
+            if (isUiActive && !isDestroyed) plotUpdateScheduler.requestRedraw(plot)
+        }
+    }
 
     var ppgGreenPlotter: PpgPlotter? = null
     var ppgIrPlotter: PpgPlotter? = null
@@ -89,7 +98,9 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
 
 //    private lateinit var acquaintedDevices: MutableList<DeviceInfo>
     private var polarApi: PolarBleApi? = null
-    private var ecgDisposable: Disposable? = null
+    private val ecgStream = EcgStreamController()
+    private var ecgRetryJob: Job? = null
+    private var ecgStoppedAtMs = 0L
     var ecgPlotter: EcgPlotter? = null
     private var qrsDetector: QrsDetector? = null
     var qrsPlotter: QrsPlotter? = null
@@ -104,24 +115,46 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
     private var ppgGreenValueNumber = 0
     private var ppgIrValueNumber = 0
     private var ppgRedValueNumber = 0
+    private var accValueNumber = 0
+    private val accXList = mutableListOf<Float>()
+    private val accYList = mutableListOf<Float>()
+    private val accZList = mutableListOf<Float>()
+    private val accTimestampList = mutableListOf<Long>()
+    private data class DeviceHrSample(val timestamp: Long, val hr: Int, val rrMs: List<Int>)
+    private val deviceHrSamples = mutableListOf<DeviceHrSample>()
 
     /**
      * Whether to save as CSV, Plot, or both.
      */
     private enum class SaveType {
-        ECG_DATA, PPG_GREEN_DATA, PPG_IR_DATA, PPG_RED_DATA, ALL_PPG, ALL
+        ECG_DATA, HR_DATA, PPG_GREEN_DATA, PPG_IR_DATA, PPG_RED_DATA, ACCELEROMETER_DATA, ALL_PPG, ALL
 //        , PLOT, BOTH
 //        , DEVICE_HR, QRS_HR, ALL
     }
 
     private var isRecording = false
     private var isPaused = false
-    /** Wall-clock time (Unix ms) when current recording segment started. */
-    private var recordingStartMs: Long = 0L
-    /** Total elapsed ms accumulated across pause/resume cycles. */
-    private var pausedElapsedMs: Long = 0L
+    private var recordingStartMs = 0L
+    private var pausedElapsedMs = 0L
     private var timerJob: Job? = null
     private var isPolarDeviceConnected = false
+    private var isEcgReady = false
+    private val watchSession = WatchSession()
+    private val watchControl = WatchControl()
+    private val controlHandler = Handler(Looper.getMainLooper())
+    private var desiredWatchCommand: Message? = null
+    private var watchAcknowledged = false
+    private var destroying = false
+    private val watchRetry = object : Runnable {
+        override fun run() {
+            val command = desiredWatchCommand ?: return
+            if (destroying) return
+            sendMessage(command, MessagePath.COMMAND)
+            if (command.code == ActivityCode.START_ACTIVITY || !watchAcknowledged) {
+                controlHandler.postDelayed(this, WatchControl.HEARTBEAT_MS)
+            }
+        }
+    }
     private var isRestartingPolar = false
     private var isEcgRunning = false
     private var isPpgGreenRunning = false
@@ -140,6 +173,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
     private var deviceFirmware = "NA"
     private var deviceName = "NA"
     private var deviceAddress = "NA"
+    private var polarConnectedId = ""
     private var deviceBatteryLevel = "NA"
 
     //* Date when stopped playing. Updated whenever playing started or
@@ -289,9 +323,6 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
             PREF_DEVICE_ID,
             ""
         ).orEmpty()
-        Log.d(
-            TAG, "settingsLauncher: resultCode=$code deviceChanged=${oldDeviceId != deviceId}"
-        )
         if (oldDeviceId != deviceId) {
             resetDeviceId(oldDeviceId)
         }
@@ -427,7 +458,8 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
         deviceId = sharedPreferences!!.getString(PREF_DEVICE_ID, "").orEmpty()
 
         // register bluetooth state broadcast receiver
-        registerBluetoothStateReceiver()
+        registerReceiver(bluetoothStateReceiver, BluetoothService.BLUETOOTH_STATE_FILTER)
+        isBluetoothReceiverRegistered = true
 
         // build Google API Client with access to Wearable API
         client = GoogleApiClient.Builder(this)
@@ -488,19 +520,27 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
                 // === START RECORDING ===
                 MobileService.startService(this, "Start recording...")
                 setLastHr()
-                recordingStartMs = System.currentTimeMillis()
-                pausedElapsedMs = 0L
-                // Pin ECG T0 to recording start so ECG and PPG timestamps
-                // share the same wall-clock reference point
-                TimestampHelper.setEcgAnchor(recordingStartMs)
+                startTime = Date(maxOf(System.currentTimeMillis(), watchSession.sessionId + 1L))
+                stopTime = Date()
+                watchSession.start(startTime!!.time)
+                deviceHrSamples.clear()
+                qrsDetector = null
                 isRecording = true
                 isPaused = false
+                recordingStartMs = SystemClock.elapsedRealtime()
+                pausedElapsedMs = 0L
                 setPanBehavior()
-                textEcgTime.text = "00:00.000"
-                // Clear the plots
+                updateTimerDisplay()
+                textEcgTime.text = getString(R.string.elapsed_time, 0.0)
+                // Clear the plots and accelerometer buffers
                 ppgGreenValueNumber = 0
                 ppgIrValueNumber = 0
                 ppgRedValueNumber = 0
+                accValueNumber = 0
+                accXList.clear()
+                accYList.clear()
+                accZList.clear()
+                accTimestampList.clear()
                 ppgGreenPlotter?.clear()
                 ppgIrPlotter?.clear()
                 ppgRedPlotter?.clear()
@@ -508,10 +548,9 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
                 qrsPlotter?.clear()
                 hrPlotter?.clear()
                 // Start ECG stream only if Polar device is connected
-                if (isPolarDeviceConnected && ecgDisposable == null) {
-                    toggleEcgStream()
-                    isEcgRunning = true
-                }
+                ecgStream.resetFailures()
+                if (!isPolarDeviceConnected && polarApi != null) connectPolarDevice()
+                startEcgStream()
                 togglePpgTracker()
                 startTimer()
                 // Update menu icons
@@ -543,6 +582,9 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
                 stopRecording()
             }
             return true
+        } else if (id == R.id.save_device_hr_data) {
+            saveDataWithName(SaveType.HR_DATA)
+            return true
         } else if (id == R.id.save_all) {
             saveDataWithName(SaveType.ALL)
             return true
@@ -565,6 +607,10 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
         }
         else if (id == R.id.save_ppg_red_data) {
             saveDataWithName(SaveType.PPG_RED_DATA)
+            return true
+        }
+        else if (id == R.id.save_accelerometer_data) {
+            saveDataWithName(SaveType.ACCELEROMETER_DATA)
             return true
         }
 //        else if (id == R.id.save_plot) {
@@ -606,36 +652,9 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
     // Timer & Recording State Helpers
     // =========================================================================
 
-    /**
-     * Returns current total elapsed recording time in milliseconds,
-     * accounting for all pause/resume cycles.
-     * Computed from the wall clock — never drifts.
-     */
-    private fun getElapsedMs(): Long =
-        pausedElapsedMs + if (!isPaused) System.currentTimeMillis() - recordingStartMs else 0L
+    private fun getElapsedMs(): Long = pausedElapsedMs +
+        if (isRecording && !isPaused) SystemClock.elapsedRealtime() - recordingStartMs else 0L
 
-    /**
-     * Decomposes elapsed milliseconds into displayable components.
-     */
-    internal data class ElapsedTime(
-        val minutes: Int,
-        val seconds: Int,
-        val millis: Int
-    )
-
-    internal fun decomposeElapsedMs(elapsedMs: Long): ElapsedTime {
-        val totalSeconds = elapsedMs / 1000L
-        val ms = (elapsedMs % 1000L).toInt()
-        val sec = (totalSeconds % 60L).toInt()
-        val min = (totalSeconds / 60L).toInt()
-        return ElapsedTime(min, sec, ms)
-    }
-
-    /**
-     * Starts the wall-clock-anchored timer coroutine.
-     * Refreshes the UI every 100 ms — no drift possible because
-     * the displayed time is always derived from [System.currentTimeMillis].
-     */
     private fun startTimer() {
         timerJob?.cancel()
         timerJob = lifecycleScope.launch {
@@ -646,80 +665,55 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
         }
     }
 
-    /**
-     * Cancels the running timer coroutine.
-     */
     private fun stopTimer() {
         timerJob?.cancel()
         timerJob = null
     }
 
-    /**
-     * Updates the ECG-section timer display.
-     * Format: MM:SS.mmm  (minutes : seconds . milliseconds)
-     */
     private fun updateTimerDisplay() {
-        val (min, sec, ms) = decomposeElapsedMs(getElapsedMs())
-        val formatted = getString(R.string.elapsed_time_formatted, min, sec, ms)
-        runOnUiThread {
-            textEcgTime.text = formatted
-            textStatusContainerTitle.text = formatted
-        }
+        val elapsed = getElapsedMs()
+        val minutes = (elapsed / 60_000L).toInt()
+        val seconds = ((elapsed / 1_000L) % 60L).toInt()
+        val millis = (elapsed % 1_000L).toInt()
+        val formatted = getString(R.string.elapsed_time_formatted, minutes, seconds, millis)
+        textStatusContainerTitle.text = formatted
+        textEcgTime.text = formatted
     }
 
     /**
      * Pauses the current recording session.
-     * Freezes the elapsed time into [pausedElapsedMs] so it
-     * continues correctly upon resume.
+     * Stops the timer, pauses data streams on wear,
+     * and pauses ECG stream.
      */
     private fun pauseRecording() {
-        // Freeze elapsed time before stopping the timer
         pausedElapsedMs = getElapsedMs()
         isPaused = true
+        MobileService.startService(this, "Paused")
         stopTimer()
         // Send pause command to wear
-        if (!connectedNode.isNullOrEmpty()) {
-            val message = Message(NAME, ActivityCode.PAUSE_ACTIVITY)
-            sendMessage(message, MessagePath.COMMAND)
-        }
+        requestWatchControl(ActivityCode.PAUSE_ACTIVITY)
         // Pause ECG stream
-        if (ecgDisposable != null) {
-            toggleEcgStream()
-            isEcgRunning = false
-        }
-        // Update PPG status to Paused
-        runOnUiThread {
-            textPpgGreenStatus.text = getString(R.string.ppg_green_status,
-                getString(R.string.status_paused))
-            textPpgIrStatus.text = getString(R.string.ppg_ir_status,
-                getString(R.string.status_paused))
-            textPpgRedStatus.text = getString(R.string.ppg_red_status,
-                getString(R.string.status_paused))
-        }
-        Log.i(TAG, "Recording paused at ${pausedElapsedMs}ms")
+        stopEcgStream()
+        Log.i(TAG, "Recording paused at ${getElapsedMs()}ms")
     }
 
     /**
      * Resumes the recording session from paused state.
-     * Re-anchors [recordingStartMs] to *now* so [getElapsedMs]
-     * continues counting from where [pausedElapsedMs] left off.
+     * Restarts the timer (continuing from current [pausedElapsedMs]),
+     * resumes data streams on wear, and resumes ECG stream.
      */
     private fun resumeRecording() {
-        recordingStartMs = System.currentTimeMillis() // fresh wall-clock anchor
+        recordingStartMs = SystemClock.elapsedRealtime()
         isPaused = false
+        MobileService.startService(this, "Recording data")
         // Send resume (start) command to wear
-        if (!connectedNode.isNullOrEmpty()) {
-            val message = Message(NAME, ActivityCode.START_ACTIVITY)
-            sendMessage(message, MessagePath.COMMAND)
-            toggleState(true)
-        }
+        requestWatchControl(ActivityCode.START_ACTIVITY)
         // Resume ECG stream
-        if (ecgDisposable == null) {
-            toggleEcgStream()
-            isEcgRunning = true
-        }
+        ecgStream.resetFailures()
+        if (!isPolarDeviceConnected && polarApi != null) connectPolarDevice()
+        startEcgStream()
         startTimer()
-        Log.i(TAG, "Recording resumed at ${pausedElapsedMs}ms accumulated")
+        Log.i(TAG, "Recording resumed at ${getElapsedMs()}ms")
     }
 
     /**
@@ -727,26 +721,18 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
      * Stops timer, stops all data streams, updates UI.
      */
     private fun stopRecording() {
-        val finalElapsedMs = getElapsedMs()
+        pausedElapsedMs = getElapsedMs()
         stopTimer()
         MobileService.stopService(this)
         setLastHr()
-        // Derive stopTime/startTime from wall-clock values for CSV/plot use
         stopTime = Date()
-        startTime = Date(stopTime!!.time - finalElapsedMs)
         isRecording = false
         isPaused = false
-        runOnUiThread {
-            textEcgTime.text = "00:00.000"
-            textStatusContainerTitle.text = getString(R.string.status_container_title)
-        }
         setPanBehavior()
         // Stop ECG stream
-        if (ecgDisposable != null) {
-            toggleEcgStream()
-            isEcgRunning = false
-        }
-        // Stop PPG stream
+        stopEcgStream()
+        // Keep accepting this session's final Watch batches after Stop.
+        watchSession.requestStop()
         togglePpgTracker()
         // Update menu
         menu.findItem(R.id.pause).icon = ResourcesCompat.getDrawable(
@@ -755,7 +741,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
         menu.findItem(R.id.pause).title = "Start"
         menu.findItem(R.id.stop_recording).isVisible = false
         menu.findItem(R.id.save).isVisible = true
-        Log.i(TAG, "Recording stopped. Total elapsed: ${finalElapsedMs}ms")
+        Log.i(TAG, "Recording stopped. Total elapsed: ${getElapsedMs()}ms")
     }
 
     private fun invalidatePpgState() {
@@ -780,11 +766,11 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
 
             runOnUiThread {
                 textPpgGreenStatus.text = getString(R.string.ppg_green_status,
-                    getString(R.string.status_connected))
+                    getString(if (connectedNode.isNullOrEmpty()) R.string.status_disconnected else R.string.status_connected))
                 textPpgIrStatus.text = getString(R.string.ppg_ir_status,
-                    getString(R.string.status_connected))
+                    getString(if (connectedNode.isNullOrEmpty()) R.string.status_disconnected else R.string.status_connected))
                 textPpgRedStatus.text = getString(R.string.ppg_red_status,
-                    getString(R.string.status_connected))
+                    getString(if (connectedNode.isNullOrEmpty()) R.string.status_disconnected else R.string.status_connected))
             }
 
             // request Wear App current state
@@ -795,14 +781,36 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
             sendMessage(message, MessagePath.REQUEST)
         }
         Wearable.MessageApi.addListener(client) { messageEvent ->
-            wearMessage = Gson().fromJson(String(messageEvent.data), Message::class.java)
-            onMessageArrived(messageEvent.path)
+            val path = messageEvent.path
+            val bytes = messageEvent.data.copyOf()
+            runOnUiThread {
+                try {
+                    wearMessage = Gson().fromJson(String(bytes, Charsets.UTF_8), Message::class.java)
+                    onMessageArrived(path)
+                } catch (error: RuntimeException) {
+                    Log.w(TAG, "Rejected malformed Watch message", error)
+                }
+            }
         }
         Wearable.DataApi.addListener(client) { data ->
 //            Log.d(TAG, "Data count arrived : ${data.count}")
             for (dataEvent in data) {
                 onDataArrived(dataEvent)
             }
+        }.setResultCallback { status ->
+            if (status.isSuccess) {
+                Wearable.DataApi.getDataItems(client).setResultCallback { items ->
+                    try {
+                        for (item in items) {
+                            val uri = item.uri
+                            val bytes = item.data?.copyOf() ?: continue
+                            runOnUiThread { ingestWatchBatch(uri, bytes) }
+                        }
+                    } finally {
+                        items.release()
+                    }
+                }
+            } else Log.w(TAG, "Watch data listener registration failed")
         }
     }
 
@@ -855,6 +863,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
                         Toast.LENGTH_LONG).show()
                 }
             }
+
         }
     }
 
@@ -876,16 +885,15 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
             return
         }
         isRestartingPolar = true
+        if (isRecording) stopRecording()
+        isEcgReady = false
 
         // Step 1: Reset state flags
         isPolarDeviceConnected = false
         isEcgRunning = false
 
         // Step 2: Dispose ECG stream
-        if (ecgDisposable != null) {
-            ecgDisposable!!.dispose()
-            ecgDisposable = null
-        }
+        stopEcgStream()
 
         // Step 3: Disconnect + Shutdown old API
         if (polarApi != null) {
@@ -928,17 +936,12 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
      * the Polar API, connection, and plot setup.
      */
     private fun setupPolar() {
-        Log.d(TAG, "setupPolar: apiInitialized=${polarApi != null}")
         if (polarApi != null || deviceId.isEmpty()) {
             return
         }
-        if (ecgDisposable != null) {
-            // Turns it off
-            toggleEcgStream()
-        }
-        isRecording = false
+        stopEcgStream()
+        isEcgReady = false
         isEcgRunning = false
-        ecgPlotter?.clear()
         textEcgHr.text = ""
         textEcgInfo.text = ""
         textEcgTime.text = ""
@@ -955,6 +958,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
             ActivityCompat.requestPermissions(
                 this, REQUIRED_PERMISSIONS, REQUEST_CODE_PERMISSIONS
             )
+            return
         }
 
         // setup Polar API
@@ -970,35 +974,53 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
         // Post a Runnable to have plots to be setup again in 1 sec
 
         // setup Polar API Callback
-        polarApi!!.setApiCallback(object: PolarBleApiCallback() {
+        val configuredApi = polarApi!!
+        val configuredId = deviceId
+        fun acceptsCallback(identifier: String) = !destroying && polarApi === configuredApi &&
+            (identifier.equals(configuredId, true) || identifier.equals(polarConnectedId, true) ||
+                identifier.equals(deviceAddress, true))
+        configuredApi.setApiCallback(object: PolarBleApiCallback() {
             override fun blePowerStateChanged(powered: Boolean) {
                 Log.d(TAG, "BluetoothStateChanged $powered")
             }
 
             override fun deviceConnected(polarDeviceInfo: PolarDeviceInfo) {
-                Log.d(TAG, "Polar device connected")
-                deviceAddress = polarDeviceInfo.address
-                deviceName = polarDeviceInfo.name
-                isPolarDeviceConnected = true
                 runOnUiThread {
+                    if (destroying || polarApi !== configuredApi ||
+                        (!polarDeviceInfo.deviceId.equals(configuredId, true) &&
+                            !polarDeviceInfo.address.equals(configuredId, true))) return@runOnUiThread
+                    deviceAddress = polarDeviceInfo.address
+                    polarConnectedId = polarDeviceInfo.deviceId
+                    deviceName = polarDeviceInfo.name
+                    isPolarDeviceConnected = true
                     textEcgStatus.text = getString(R.string.ecg_status,
                         getString(R.string.status_connected))
+                    Toast.makeText(
+                        this@MainActivity,
+                        getString(R.string.connected_string, polarDeviceInfo.name),
+                        Toast.LENGTH_SHORT
+                    ).show()
+                    startEcgStream()
                 }
-//                // Set the MRU preference here after we know the name
-//                setDevicePreferences(DeviceInfo(deviceName, deviceId))
-                Toast.makeText(
-                    this@MainActivity,
-                    getString(R.string.connected_string, polarDeviceInfo.name),
-                    Toast.LENGTH_SHORT
-                ).show()
             }
 
             override fun deviceDisconnected(polarDeviceInfo: PolarDeviceInfo) {
-                Log.d(TAG, "Polar device disconnected")
-                isPolarDeviceConnected = false
                 runOnUiThread {
+                    if (!acceptsCallback(polarDeviceInfo.deviceId) &&
+                        !acceptsCallback(polarDeviceInfo.address)) return@runOnUiThread
+                    isPolarDeviceConnected = false
+                    isEcgReady = false
+                    stopEcgStream()
                     textEcgStatus.text = getString(R.string.ecg_status,
                         getString(R.string.status_disconnected))
+                    if (isRecording && !isPaused && ecgStream.failures <= 2) {
+                        ecgRetryJob = lifecycleScope.launch {
+                            delay(1_000L)
+                            if (polarApi === configuredApi && isRecording && !isPaused && !isPolarDeviceConnected) {
+                                connectPolarDevice()
+                            }
+                        }
+                    }
                 }
             }
 
@@ -1006,25 +1028,16 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
                 identifier: String,
                 features: Set<DeviceStreamingFeature>
             ) {
-                for (feature in features) {
-                    Log.d(TAG, "Streaming feature is ready for 1: $feature")
-                    when (feature) {
-                        DeviceStreamingFeature.ECG -> {
-
-//                            toggleEcgStream()
-                        }
-//                        DeviceStreamingFeature.PPI,
-//                        DeviceStreamingFeature.ACC,
-//                        DeviceStreamingFeature.MAGNETOMETER,
-//                        DeviceStreamingFeature.GYRO,
-//                        DeviceStreamingFeature.PPG -> {}
-                        else -> {}
-                    }
+                runOnUiThread {
+                    if (!acceptsCallback(identifier)) return@runOnUiThread
+                    isEcgReady = DeviceStreamingFeature.ECG in features
+                    if (isEcgReady) startEcgStream()
+                    if (!isEcgReady) textEcgStatus.text = "ECG unavailable on this Polar device; HR remains supported"
                 }
             }
 
+
             override fun hrFeatureReady(identifier: String) {
-                Log.d(TAG, "Polar HR feature ready")
             }
 
             override fun disInformationReceived(
@@ -1032,48 +1045,42 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
                 uuid: UUID,
                 value: String
             ) {
-                if (uuid == UUID.fromString(
-                        "00002a28-0000-1000-8000" +
-                                "-00805f9b34fb"
-                    )
-                ) {
-                    deviceFirmware = value.trim { it <= ' ' }
-                    Log.d(TAG, "Polar firmware received")
-                    textEcgInfo.text = getString(
-                        R.string.info_string,
-                        deviceName, deviceBatteryLevel, deviceFirmware, deviceId
-                    )
+                runOnUiThread {
+                    if (!acceptsCallback(identifier)) return@runOnUiThread
+                    if (uuid == UUID.fromString("00002a28-0000-1000-8000-00805f9b34fb")) {
+                        deviceFirmware = value.trim { it <= ' ' }
+                        textEcgInfo.text = getString(R.string.info_string,
+                            deviceName, deviceBatteryLevel, deviceFirmware, deviceId)
+                    }
                 }
             }
 
             override fun batteryLevelReceived(identifier: String, level: Int) {
-                deviceBatteryLevel = level.toString()
-                Log.d(TAG, "Polar battery level received")
-                textEcgInfo.text = getString(
-                    R.string.info_string,
-                    deviceName, deviceBatteryLevel, deviceFirmware, deviceId
-                )
+                runOnUiThread {
+                    if (!acceptsCallback(identifier)) return@runOnUiThread
+                    deviceBatteryLevel = level.toString()
+                    textEcgInfo.text = getString(R.string.info_string,
+                        deviceName, deviceBatteryLevel, deviceFirmware, deviceId)
+                }
             }
 
             override fun hrNotificationReceived(
                 identifier: String,
                 data: PolarHrData
             ) {
-                if (isEcgRunning) {
-//                    Log.d(TAG,
-//                            "*HR " + polarHrData.hr + " mPlaying=" +
-//                            mPlaying);
+                runOnUiThread {
+                    if (!acceptsCallback(identifier) || !isRecording || isPaused || data.hr <= 0 ||
+                        (data.contactStatusSupported && !data.contactStatus)) return@runOnUiThread
+                    val timestamp = System.currentTimeMillis()
+                    val rrMs = if (data.rrAvailable) data.rrsMs.toList() else emptyList()
+                    deviceHrSamples.add(DeviceHrSample(timestamp, data.hr, rrMs))
                     textEcgHr.text = data.hr.toString()
-//                    // Add to HR plot
-                    val time = Date().time
-                    hrPlotter?.addValues1(
-                        time.toDouble(),
-                        data.hr.toDouble(),
-                        data.rrsMs
-                    )
+                    hrPlotter?.addValues1(timestamp.toDouble(), data.hr.toDouble(), rrMs)
                     hrPlotter?.fullUpdate()
                 }
             }
+
+
         })
 //        // try connect to device
 //        try {
@@ -1083,8 +1090,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
 //            stopTime = Date()
 //        } catch (ex: PolarInvalidArgument) {
 //            val msg = """
-//                DeviceId=$deviceId
-//                ConnectToDevice: Bad argument:
+////                ConnectToDevice: Bad argument:
 //                """.trimIndent()
 //            AppUtils.excMsg(this, msg, ex)
 //            Log.d(TAG, "restart: $msg")
@@ -1110,7 +1116,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
         }
         val handler = Handler(Looper.getMainLooper())
         handler.postDelayed({
-            if (!isPolarDeviceConnected) {
+            if (!isDestroyed && !isFinishing && !isPolarDeviceConnected) {
                 AppUtils.warnMsg(
                     this@MainActivity, "No connection to " + deviceId
                             + " after 1 minute"
@@ -1125,7 +1131,6 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
         // try connect to device
         try {
             polarApi!!.connectToDevice(deviceId)
-            Log.d(TAG, "Connecting to Polar device")
             runOnUiThread {
                 textEcgStatus.text = getString(R.string.ecg_status,
                     getString(R.string.status_connecting))
@@ -1139,7 +1144,9 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
             setLastHr()
             stopTime = Date()
         } catch (ex: PolarInvalidArgument) {
-            val msg = "ConnectToDevice: Bad argument"
+            val msg = """
+                ConnectToDevice: Bad argument:
+                """.trimIndent()
             AppUtils.excMsg(this, msg, ex)
             Log.d(TAG, "connectPolarDevice: $msg")
 //            isPlaying = false
@@ -1152,6 +1159,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
     override fun onResume() {
         Log.d(TAG, this.javaClass.simpleName + " onResume:")
         super.onResume()
+        isUiActive = true
 
         // Check if PREF_TREE_URI is valid and remove it if not
         if (UriUtils.getNPersistedPermissions(this) <= 0) {
@@ -1229,6 +1237,8 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
     override fun onPause() {
         Log.v(TAG, this.javaClass.simpleName + " onPause")
         super.onPause()
+        isUiActive = false
+        plotUpdateScheduler.stop()
 
         polarApi?.backgroundEntered()
     }
@@ -1247,18 +1257,9 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
         Log.i(TAG,"Lifecycle: onRestart()")
         // re-register bluetooth state receiver (guard against duplicate registration)
         if (!isBluetoothReceiverRegistered) {
-            registerBluetoothStateReceiver()
+            registerReceiver(bluetoothStateReceiver, BluetoothService.BLUETOOTH_STATE_FILTER)
+            isBluetoothReceiverRegistered = true
         }
-    }
-
-    private fun registerBluetoothStateReceiver() {
-        ContextCompat.registerReceiver(
-            this,
-            bluetoothStateReceiver,
-            BluetoothService.BLUETOOTH_STATE_FILTER,
-            ContextCompat.RECEIVER_EXPORTED
-        )
-        isBluetoothReceiverRegistered = true
     }
 
     override fun onStop() {
@@ -1274,7 +1275,21 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
     override fun onDestroy() {
         super.onDestroy()
         Log.i(TAG,"Lifecycle: onDestroy()")
+        stopEcgStream()
+        stopTimer()
+        MobileService.stopService(this)
+        if (isRecording) requestWatchControl(ActivityCode.STOP_ACTIVITY)
+        desiredWatchCommand?.takeIf { it.code == ActivityCode.STOP_ACTIVITY && client.isConnected }?.let { command ->
+            val bytes = Gson().toJson(command).toByteArray(Charsets.UTF_8)
+            connectedNode?.forEach { Wearable.MessageApi.sendMessage(client, it.id, MessagePath.COMMAND, bytes) }
+        }
+        destroying = true
+        controlHandler.removeCallbacks(watchRetry)
+        isRecording = false
+        plotUpdateScheduler.stop()
         polarApi?.shutDown()
+        // Give the final best-effort End time to send; the Watch lease covers lost transport.
+        controlHandler.postDelayed({ client.disconnect() }, 500L)
         // unregister receiver
         if (isBluetoothReceiverRegistered) {
             unregisterReceiver(bluetoothStateReceiver)
@@ -1300,20 +1315,12 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
      * Show the help.
      */
     private fun showHelp() {
-        Log.d(TAG, "showHelp")
-//        try {
-//            // Start theInfoActivity
-//            val intent = Intent()
-//            intent.setClass(this, InfoActivity::class.java)
-//            intent.addFlags(
-//                Intent.FLAG_ACTIVITY_NEW_TASK
-//                        or Intent.FLAG_ACTIVITY_SINGLE_TOP
-//            )
-//            intent.putExtra(INFO_URL, "file:///android_asset/kedotnetecg.html")
-//            startActivity(intent)
-//        } catch (ex: java.lang.Exception) {
-//            Utils.excMsg(this, getString(R.string.help_show_error), ex)
-//        }
+        AppUtils.infoMsg(this, "Install matching phone and Watch versions. Grant Watch Body Sensors permission " +
+            "and configure Samsung Health Sensor access. Start records native Watch acceleration and supported " +
+            "continuous Green/IR/Red PPG at 25 Hz. Enter a Polar device ID to connect; H10 ECG uses 130 Hz, " +
+            "while HR/RR depends on device support. Pause keeps the session; Resume continues it. " +
+            "Stop flushes remaining Watch samples. Choose a data directory before saving CSV. " +
+            "Pending Watch transfers are marked incomplete if you choose Save partial.")
     }
 
     /**
@@ -1388,17 +1395,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
     }
 
     private fun redoPlotSetup() {
-        // Clear old data
-        ppgGreenPlotter?.clear()
-        ppgIrPlotter?.clear()
-        ppgRedPlotter?.clear()
-        ecgPlotter?.clear()
-        qrsPlotter?.clear()
-        hrPlotter?.clear()
-        // Reset counters
-        ppgGreenValueNumber = 0
-        ppgIrValueNumber = 0
-        ppgRedValueNumber = 0
+        // Reconfigure layout without erasing the recorded session.
         // Force layout recalculation so gridRect is available for setupPlot
         ppgGreenPlot.invalidate()
         ppgIrPlot.invalidate()
@@ -1538,7 +1535,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
         val dialog = AlertDialog.Builder(this)
         dialog.setTitle(R.string.device_id_item)
 
-        val viewInflated: View = LayoutInflater.from(this).inflate(
+        val viewInflated: View = LayoutInflater.from(applicationContext).inflate(
             R.layout.device_id_dialog,
             if (view == null) null else view.rootView as ViewGroup,
             false
@@ -1555,7 +1552,6 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
         ) { _, _ ->
             val oldDeviceId: String = deviceId
             deviceId = input.text.toString()
-            Log.d(TAG, "showDeviceIdDialog: deviceChanged=${oldDeviceId != deviceId}")
             val editor: SharedPreferences.Editor = sharedPreferences!!.edit()
             editor.putString(PREF_DEVICE_ID, deviceId)
             editor.apply()
@@ -1572,7 +1568,6 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
         dialog.setNegativeButton(
             R.string.cancel
         ) { dialog1, _ ->
-            Log.d(TAG, "showDeviceIdDialog: Cancel")
             dialog1.cancel()
             if (deviceId.isEmpty()) {
                 Toast.makeText(
@@ -1592,21 +1587,19 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
      * @param oldDeviceId The previous deviceId.
      */
     private fun resetDeviceId(oldDeviceId: String) {
-        Log.d(TAG, this.javaClass.simpleName + " resetDeviceId:")
+        if (isRecording) stopRecording()
+        isPolarDeviceConnected = false
+        isEcgReady = false
+        isEcgRunning = false
         if (polarApi != null) {
-            if (ecgDisposable != null) {
-                ecgDisposable!!.dispose()
-                ecgDisposable = null
-            }
+            stopEcgStream()
             try {
                 polarApi!!.disconnectFromDevice(oldDeviceId)
             } catch (ex: PolarInvalidArgument) {
-                val msg = "DisconnectFromDevice: Bad argument"
+                val msg = """
+                DisconnectFromDevice: Bad argument:
+                """.trimIndent()
                 AppUtils.excMsg(this@MainActivity, msg, ex)
-                Log.d(
-                    TAG, this.javaClass.simpleName
-                            + " resetDeviceId: " + msg
-                )
             }
             polarApi!!.shutDown()
             polarApi = null
@@ -1621,7 +1614,18 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
      * then calls the appropriate save method.
      * @param saveType The SaveType.
      */
-    private fun saveDataWithName(saveType: SaveType) {
+    private fun saveDataWithName(saveType: SaveType, allowPartial: Boolean = false) {
+        if (startTime == null) {
+            AppUtils.warnMsg(this, "Record a session before saving")
+            return
+        }
+        if (!watchSession.isComplete && !allowPartial) {
+            AlertDialog.Builder(this)
+                .setMessage("Final Watch samples are still pending. Save currently received samples as an incomplete session?")
+                .setPositiveButton("Save partial") { _, _ -> saveDataWithName(saveType, true) }
+                .setNegativeButton(R.string.cancel, null).show()
+            return
+        }
         val msg: String
         val state = Environment.getExternalStorageState()
         if (Environment.MEDIA_MOUNTED != state) {
@@ -1633,7 +1637,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
         // Get file name
         val dialog = AlertDialog.Builder(this)
         dialog.setTitle(R.string.filename_dialog_title)
-        val viewInflated: View = LayoutInflater.from(this)
+        val viewInflated: View = LayoutInflater.from(applicationContext)
             .inflate(R.layout.device_id_dialog, null, false)
         val input = viewInflated.findViewById<EditText>(R.id.input)
         input.inputType = (InputType.TYPE_CLASS_TEXT
@@ -1646,14 +1650,18 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
             when (saveType) {
                 SaveType.ALL -> {
                     saveEcgData(input.text.toString())
+                    saveDeviceHrData(input.text.toString())
                     savePpgData(input.text.toString(), ppgGreenPlotter!!)
                     savePpgData(input.text.toString(), ppgIrPlotter!!)
                     savePpgData(input.text.toString(), ppgRedPlotter!!)
+                    saveAccelerometerData(input.text.toString())
                 }
+                SaveType.HR_DATA -> saveDeviceHrData(input.text.toString())
                 SaveType.ECG_DATA -> saveEcgData(input.text.toString())
                 SaveType.PPG_GREEN_DATA -> savePpgData(input.text.toString(), ppgGreenPlotter!!)
                 SaveType.PPG_IR_DATA -> savePpgData(input.text.toString(), ppgIrPlotter!!)
                 SaveType.PPG_RED_DATA -> savePpgData(input.text.toString(), ppgRedPlotter!!)
+                SaveType.ACCELEROMETER_DATA -> saveAccelerometerData(input.text.toString())
                 SaveType.ALL_PPG -> {
                     savePpgData(input.text.toString(), ppgGreenPlotter!!)
                     savePpgData(input.text.toString(), ppgIrPlotter!!)
@@ -1774,10 +1782,8 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
             AppUtils.errMsg(this, "There is no data directory set")
             return
         }
-        // Derive duration from wall-clock start/stop times
-        val finalElapsedMs = stopTime!!.time - startTime!!.time
-        val duration = finalElapsedMs / 1000.0
-        val sessionStartMs = startTime!!.time
+        // Use the coroutine-based elapsed time instead of startTime/stopTime
+        val duration = getElapsedMs() / 1000.0
         var msg: String
         val format = "yyyy-MM-dd_HH-mm"
         val df = SimpleDateFormat(format, Locale.US)
@@ -1815,11 +1821,13 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
                                 + AppUtils.getVersion(this)) + "\n"
                     )
                     out.write("datatype=ECG\n")
+                    out.write("timestamp_unit=unix_ms\n")
+                    out.write("timestamp_source=polar_sample_ns_anchored_to_first_packet_receipt\n")
                     out.write(
                         """
                         stoptime=${stopTime.toString()}
                         
-                        """.trimIndent()
+                        """.trimIndent() + "\n"
                     )
                     out.write("duration=$durationString\n")
                     out.write("samplescount=$sampleCount\n")
@@ -1827,7 +1835,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
                         """
                         ${"samplingrate=$ECG_SAMPLE_RATE"}
                         
-                        """.trimIndent()
+                        """.trimIndent() + "\n"
                     )
                     out.write("stopdevicehr=$deviceStopHr\n")
                     out.write("stopcalculatedhr=$calculatedStopHr\n")
@@ -1840,18 +1848,13 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
 
                     // Write samples
                     for (i in 0 until sampleCount) {
-                        val sampleElapsedMs = timestamps[i] - sessionStartMs
-                        val elMin = (sampleElapsedMs / 60000L).toInt()
-                        val elSec = ((sampleElapsedMs % 60000L) / 1000L).toInt()
-                        val elMs  = (sampleElapsedMs % 1000L).toInt()
                         out.write(
                             String.format(
-                                Locale.US, "%.3f,%d,%d,%s,%d,%d,%d\n",
+                                Locale.US, "%.3f,%d,%d,%s\n",
                                 ecgValues[i],
                                 if (peakValues[i]) 1 else 0,
                                 timestamps[i],
-                                timestampFormat.format(Date(timestamps[i])),
-                                elMin, elSec, elMs
+                                timestampFormat.format(Date(timestamps[i]))
                             )
                         )
                     }
@@ -1884,10 +1887,8 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
             AppUtils.errMsg(this, "There is no data directory set")
             return
         }
-        // Derive duration from wall-clock start/stop times
-        val finalElapsedMs = stopTime!!.time - startTime!!.time
-        val duration = finalElapsedMs / 1000.0
-        val sessionStartMs = startTime!!.time
+        // Use the coroutine-based elapsed time instead of startTime/stopTime
+        val duration = getElapsedMs() / 1000.0
         var msg: String
         val format = "yyyy-MM-dd_HH-mm"
         val df = SimpleDateFormat(format, Locale.US)
@@ -1931,12 +1932,14 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
                         ("application=" + "SamplingApp Version: "
                                 + AppUtils.getVersion(this)) + "\n"
                     )
-                    out.write("datatype=$ppgTypeString")
+                    out.write("datatype=$ppgTypeString\n")
+                    out.write("timestamp_unit=unix_ms\n")
+                    out.write("watch_transfer_complete=${watchSession.isComplete}\n")
                     out.write(
                         """
                         stoptime=${stopTime.toString()}
                         
-                        """.trimIndent()
+                        """.trimIndent() + "\n"
                     )
                     out.write("duration=$durationString\n")
                     out.write("samplescount=$sampleCount\n")
@@ -1944,24 +1947,19 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
                         """
                         ${"samplingrate=$sampleRate"}
                         
-                        """.trimIndent()
+                        """.trimIndent() + "\n"
                     )
                     out.write("stopcalculatedhr=$calculatedStopHr\n")
 //                    out.write("note=$filename\n")
 
-                    // Write samples with elapsed time decomposition
+                    // Write samples
                     for (i in 0 until sampleCount) {
-                        val sampleElapsedMs = timestamps[i] - sessionStartMs
-                        val elMin = (sampleElapsedMs / 60000L).toInt()
-                        val elSec = ((sampleElapsedMs % 60000L) / 1000L).toInt()
-                        val elMs  = (sampleElapsedMs % 1000L).toInt()
                         out.write(
                             String.format(
-                                Locale.US, "%d,%d,%s,%d,%d,%d\n",
+                                Locale.US, "%d,%d,%s\n",
                                 ppgValues[i],
                                 timestamps[i],
-                                timestampFormat.format(Date(timestamps[i])),
-                                elMin, elSec, elMs
+                                timestampFormat.format(Date(timestamps[i]))
                             )
                         )
                     }
@@ -1974,6 +1972,115 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
             pfd.close()
         } catch (ex: java.lang.Exception) {
             msg = "Error writing CSV file"
+            Log.e(TAG, msg)
+            Log.e(TAG, Log.getStackTraceString(ex))
+            AppUtils.excMsg(this, msg, ex)
+        }
+    }
+
+    /**
+     * Finishes the saveData after getting the name.
+     * Only saves the Accelerometer recording data.
+     * @param filename The name.
+     */
+    private fun saveDeviceHrData(filename: String) {
+        val treeUriStr = getPreferences(MODE_PRIVATE).getString(PREF_TREE_URI, null)
+        if (treeUriStr == null) {
+            AppUtils.errMsg(this, "There is no data directory set")
+            return
+        }
+        try {
+            val tree = Uri.parse(treeUriStr)
+            val directory = DocumentsContract.buildDocumentUriUsingTree(tree, DocumentsContract.getTreeDocumentId(tree))
+            val stamp = SimpleDateFormat("yyyy-MM-dd_HH-mm", Locale.US).format(stopTime!!)
+            val document = DocumentsContract.createDocument(contentResolver, directory, "text/csv",
+                "$filename-PolarHR-$stamp.csv") ?: error("Could not create HR CSV")
+            contentResolver.openFileDescriptor(document, "w")?.use { descriptor ->
+                FileWriter(descriptor.fileDescriptor).use { out ->
+                    out.write("application=SamplingApp Version: ${AppUtils.getVersion(this)}\n")
+                    out.write("datatype=PolarHR\nsamplescount=${deviceHrSamples.size}\n")
+                    out.write("samplingrate=event_driven\ntimestamp_unit=unix_ms\n")
+                    out.write("timestamp_source=phone_notification_receipt\n")
+                    out.write("timestamp,hr_bpm,rr_ms,formatted_time\n")
+                    for (sample in deviceHrSamples) {
+                        out.write("${sample.timestamp},${sample.hr},${sample.rrMs.joinToString(";")}," +
+                            "${timestampFormat.format(Date(sample.timestamp))}\n")
+                    }
+                }
+            } ?: error("Could not open HR CSV")
+            AppUtils.infoMsg(this, "Wrote ${document.lastPathSegment}")
+        } catch (error: Exception) {
+            AppUtils.excMsg(this, "Error writing HR CSV", error)
+        }
+    }
+
+    private fun saveAccelerometerData(filename: String) {
+        val prefs = getPreferences(MODE_PRIVATE)
+        val treeUriStr = prefs.getString(PREF_TREE_URI, null)
+        if (treeUriStr == null) {
+            AppUtils.errMsg(this, "There is no data directory set")
+            return
+        }
+        val duration = getElapsedMs() / 1000.0
+        val format = "yyyy-MM-dd_HH-mm"
+        val df = SimpleDateFormat(format, Locale.US)
+        val fileName = filename + "-Accelerometer-" + df.format(stopTime!!) + ".csv"
+        try {
+            val treeUri = Uri.parse(treeUriStr)
+            val treeDocumentId = DocumentsContract.getTreeDocumentId(treeUri)
+            val docTreeUri = DocumentsContract.buildDocumentUriUsingTree(
+                treeUri,
+                treeDocumentId
+            )
+            val resolver = this.contentResolver
+            val docUri = DocumentsContract.createDocument(
+                resolver, docTreeUri,
+                "text/csv", fileName
+            )
+            val pfd = contentResolver.openFileDescriptor(docUri!!, "w")
+            FileWriter(pfd!!.fileDescriptor).use { writer ->
+                PrintWriter(writer).use { out ->
+                    val sampleCount = accXList.size
+                    val durationString = java.lang.String.format(
+                        Locale.US, "%.1f sec",
+                        duration
+                    )
+                    out.write(
+                        ("application=" + "SamplingApp Version: "
+                                + AppUtils.getVersion(this)) + "\n"
+                    )
+                    out.write("datatype=Accelerometer\n")
+                    out.write("stoptime=${stopTime.toString()}\n")
+                    out.write("duration=$durationString\n")
+                    out.write("samplescount=$sampleCount\n")
+                    out.write("samplingrate=25.0\n")
+                    out.write("samplingrate_requested=25.0\n")
+                    out.write("timestamp_unit=unix_ms\n")
+                    out.write("watch_transfer_complete=${watchSession.isComplete}\n")
+                    out.write("x,y,z,timestamp,formatted_time\n")
+
+                    // Write samples
+                    for (i in 0 until sampleCount) {
+                        out.write(
+                            String.format(
+                                Locale.US, "%.4f,%.4f,%.4f,%d,%s\n",
+                                accXList[i],
+                                accYList[i],
+                                accZList[i],
+                                accTimestampList[i],
+                                timestampFormat.format(Date(accTimestampList[i]))
+                            )
+                        )
+                    }
+                    out.flush()
+                    val msg = "Wrote " + docUri.lastPathSegment
+                    Log.d(TAG, msg)
+                    AppUtils.infoMsg(this, msg)
+                }
+            }
+            pfd.close()
+        } catch (ex: java.lang.Exception) {
+            val msg = "Error writing Accelerometer CSV file"
             Log.e(TAG, msg)
             Log.e(TAG, Log.getStackTraceString(ex))
             AppUtils.excMsg(this, msg, ex)
@@ -2143,9 +2250,10 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
         val length = ppgValues.size
         val ppg = IntArray(length)
         val timestamp = LongArray(length)
-        for ((i, value) in ppgValues.withIndex()) {
-            ppg[i] = value.toInt()
-            timestamp[i] = timestampValues[i].toLong()
+        val indices = (0 until length).sortedBy { timestampValues[it].toLong() }
+        for ((i, source) in indices.withIndex()) {
+            ppg[i] = ppgValues[source].toInt()
+            timestamp[i] = timestampValues[source].toLong()
         }
         arrays = PpgPlotArrays(ppg, timestamp)
         return arrays
@@ -2168,13 +2276,16 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
      * @see PpgType
      */
     private fun togglePpgTracker(ppgType: PpgType? = null) {
+        if (ppgType != null && (!isRecording || isPaused)) {
+            AppUtils.warnMsg(this, "Start or resume the recording before changing PPG channels")
+            return
+        }
         Log.d(
             TAG, this.javaClass.simpleName + " togglePpgTracker:"
                     + " connectedNode=" + connectedNode
         )
-        if (connectedNode.isNullOrEmpty()) {
-            AppUtils.errMsg(this,
-                "Samsung Watch is not connected. Please ensure watch is paired and connected.")
+        if (ppgType != null && connectedNode.isNullOrEmpty()) {
+            Toast.makeText(this, "Galaxy Watch unavailable; Polar recording can continue", Toast.LENGTH_LONG).show()
             return
         }
 
@@ -2202,167 +2313,183 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
             else -> {}
         }
 
-        if (isRecording) {
-            // if recording is on, turn on all ppg tracker
-            val message = Message(NAME, ActivityCode.START_ACTIVITY)
-            sendMessage(message, MessagePath.COMMAND)
-            toggleState(true)
-        } else {
-            // if not recording, turn off all ppg tracker
-            val message = Message(NAME, ActivityCode.STOP_ACTIVITY)
-            sendMessage(message, MessagePath.COMMAND)
-            toggleState(false)
+        requestWatchControl(if (isRecording) ActivityCode.START_ACTIVITY else ActivityCode.STOP_ACTIVITY)
+    }
+
+    private fun stopEcgStream() {
+        ecgRetryJob?.cancel()
+        ecgRetryJob = null
+        if (ecgStream.isActive) ecgStoppedAtMs = SystemClock.elapsedRealtime()
+        val pending = ecgStream.stop()
+        isEcgRunning = false
+        qrsDetector = null
+        if (pending) disconnectPendingEcg()
+        if (::textEcgStatus.isInitialized) textEcgStatus.text = getString(R.string.ecg_status,
+            getString(if (isPaused) R.string.status_paused else R.string.status_stopped))
+    }
+
+    private fun disconnectPendingEcg() {
+        // SDK 4.0 attaches its stop doFinally after the start handshake. Closing the
+        // connection cancels a start that might already have reached the sensor.
+        val wasConnected = isPolarDeviceConnected
+        isEcgReady = false
+        isPolarDeviceConnected = false
+        if (!wasConnected) return
+        try {
+            polarApi?.disconnectFromDevice(deviceId)
+        } catch (error: Exception) {
+            Log.w(TAG, "Pending ECG disconnect failed", error)
         }
     }
 
-    /**
-     * Toggles streaming for ECG.
-     *
-     * Turns streaming on when not running.
-     *
-     * Turns streaming off when it is currently running.
-     */
-    private fun toggleEcgStream() {
-        Log.d(
-            TAG, this.javaClass.simpleName + " streamECG:"
-                    + " EcgDisposable=" + ecgDisposable
-                    + " isConnected=" + isPolarDeviceConnected
-        )
-        if (!isPolarDeviceConnected) {
-            AppUtils.errMsg(this, "streamECG: Device is not connected yet")
+    private fun startEcgStream() {
+        val api = polarApi ?: return
+        if (destroying || ecgStream.isActive || !isPolarDeviceConnected || !isEcgReady ||
+            !isRecording || isPaused || ecgStream.failures > 2) return
+        // Polar sends stopMeasurement asynchronously on dispose; rapid Resume must wait.
+        val waitMs = 1_000L - (SystemClock.elapsedRealtime() - ecgStoppedAtMs)
+        if (waitMs > 0L) {
+            ecgRetryJob?.cancel()
+            ecgRetryJob = lifecycleScope.launch { delay(waitMs); startEcgStream() }
             return
         }
-        logEpochInfo("UTC")
-        if (ecgDisposable == null) {
-            // Reset ECG timestamps; anchor will be set on first data arrival
-            TimestampHelper.resetEcgTimestamps()
-            // Set the local time to get correct timestamps. Polar H10 apparently
-            // resets its time to 01:01:2019 00:00:00 when connected to strap
-            val timeZone = TimeZone.getTimeZone("UTC")
-            val calNow = Calendar.getInstance(timeZone)
-            Log.d(TAG, "setLocalTime to " + calNow.time)
-            ecgDisposable = polarApi!!.setLocalTime(deviceId, calNow)
-                .andThen(
-                    polarApi!!.requestStreamSettings(
-                        deviceId,
-                        DeviceStreamingFeature.ECG
-                    )
-                )
+        val identifier = deviceId
+        TimestampHelper.resetEcgTimestamps()
+        textEcgStatus.text = getString(R.string.ecg_status, "Starting ECG")
+        ecgStream.start({
+            api.requestStreamSettings(identifier, DeviceStreamingFeature.ECG)
                 .toFlowable()
-                .flatMap { sensorSetting: PolarSensorSetting ->
-                    polarApi!!.startEcgStreaming(
-                        deviceId,
-                        sensorSetting.maxSettings()
-                    )
-                }.observeOn(AndroidSchedulers.mainThread())
-                .subscribe(
-                    { polarEcgData: PolarEcgData ->
-//                                        logTimestampInfo(polarEcgData);
-                        if (qrsDetector == null) {
-                            qrsDetector = QrsDetector(this@MainActivity)
-                        }
-                        //                                        logEcgDataInfo(polarEcgData);
-                        qrsDetector!!.process(polarEcgData)
-                        // ECG elapsed time is handled by the shared coroutine timer
-                    },
-                    { throwable: Throwable ->
-                        Log.e(
-                            TAG, "ECG Error: "
-                                    + throwable.localizedMessage,
-                            throwable
-                        )
-                        AppUtils.excMsg(
-                            this@MainActivity, "ECG " +
-                                    "Error: ",
-                            throwable
-                        )
-                        ecgDisposable = null
-                    },
-                    {
-                        Log.d(
-                            TAG,
-                            "ECG streaming complete"
-                        )
+                .flatMap { setting ->
+                    val selected = setting.maxSettings()
+                    require(selected.settings[PolarSensorSetting.SettingType.SAMPLE_RATE] == setOf(130)) {
+                        "QRS processing requires the H10 ECG rate of 130 Hz"
                     }
-                )
-        } else {
-            // NOTE stops streaming if it is "running"
-            ecgDisposable?.dispose()
-            ecgDisposable = null
-            if (qrsDetector != null) qrsDetector = null
-        }
+                    api.startEcgStreaming(identifier, selected)
+                }
+                .timeout(10L, TimeUnit.SECONDS)
+                .observeOn(AndroidSchedulers.mainThread())
+        }, { data ->
+                if (polarApi === api && identifier == deviceId && isRecording && !isPaused && data.samples.isNotEmpty()) {
+                    isEcgRunning = true
+                    textEcgStatus.text = getString(R.string.ecg_status, getString(R.string.status_measuring))
+                    if (qrsDetector == null) qrsDetector = QrsDetector(this)
+                    qrsDetector?.process(data)
+                }
+            }, { error, pending ->
+                if (destroying || polarApi !== api || identifier != deviceId) return@start
+                isEcgRunning = false
+                qrsDetector = null
+                ecgStoppedAtMs = SystemClock.elapsedRealtime()
+                if (pending) disconnectPendingEcg()
+                Log.e(TAG, "ECG streaming failed", error)
+                val retry = ecgStream.retryAfter(error)
+                if (isRecording && !isPaused && retry) {
+                    textEcgStatus.text = getString(R.string.ecg_status, "Retry ${ecgStream.failures}/2: ${error.message}")
+                    ecgRetryJob = lifecycleScope.launch {
+                        delay(1_000L)
+                        if (polarApi === api && isRecording && !isPaused) {
+                            if (!isPolarDeviceConnected) connectPolarDevice() else startEcgStream()
+                        }
+                    }
+                } else {
+                    textEcgStatus.text = getString(R.string.ecg_status, "Error: ${error.message}")
+                    AppUtils.excMsg(this, "ECG streaming failed; check H10 contact/connection, then Resume or restart Polar", error)
+                }
+            }, {
+                isEcgRunning = false
+                qrsDetector = null
+                textEcgStatus.text = getString(R.string.ecg_status, "ECG stream ended")
+            })
     }
 
     private fun onDataArrived(dataEvent: DataEvent) {
-        // Guard: only process data when actively recording and not paused
-        if (!isRecording || isPaused) {
-            Log.d(TAG, "Data arrived but recording is " +
-                    if (!isRecording) "stopped" else "paused" +
-                    ". Ignoring.")
-            return
-        }
+        if (dataEvent.type != DataEvent.TYPE_CHANGED) return
+        // DataEventBuffer is released after its callback: copy before posting.
+        val uri = dataEvent.dataItem.uri
+        val bytes = dataEvent.dataItem.data?.copyOf() ?: return
+        runOnUiThread { ingestWatchBatch(uri, bytes) }
+    }
 
-        when (dataEvent.dataItem.uri.path) {
-            MessagePath.DATA_HR -> {
-                Log.d(TAG, "Heart rate data received")
+    private fun ingestWatchBatch(uri: Uri, bytes: ByteArray) {
+        val path = "/" + uri.path.orEmpty().trim('/').substringBefore('/')
+        try {
+            when (path) {
+                MessagePath.DATA_PPG_GREEN, MessagePath.DATA_PPG_IR, MessagePath.DATA_PPG_RED -> {
+                    val batch = Gson().fromJson(String(bytes, Charsets.UTF_8), PpgData::class.java) ?: return
+                    val type = when (path) {
+                        MessagePath.DATA_PPG_GREEN -> PpgType.PPG_GREEN
+                        MessagePath.DATA_PPG_IR -> PpgType.PPG_IR
+                        else -> PpgType.PPG_RED
+                    }
+                    if (batch.ppgType != type || !batch.isValid()) return
+                    val plotter = when (type) {
+                        PpgType.PPG_GREEN -> ppgGreenPlotter
+                        PpgType.PPG_IR -> ppgIrPlotter
+                        PpgType.PPG_RED -> ppgRedPlotter
+                    } ?: return
+                    if (watchSession.acceptBatch(batch.sessionId, uri.toString(), type.ordinal, batch.size)) {
+                        for (i in 0 until batch.size) plotter.addValues(batch.ppgValues[i], batch.timestamps[i])
+                        when (type) {
+                            PpgType.PPG_GREEN -> ppgGreenValueNumber += batch.size
+                            PpgType.PPG_IR -> ppgIrValueNumber += batch.size
+                            PpgType.PPG_RED -> ppgRedValueNumber += batch.size
+                        }
+                        if (isRecording && !isPaused) {
+                            val status = when (type) {
+                                PpgType.PPG_GREEN -> textPpgGreenStatus
+                                PpgType.PPG_IR -> textPpgIrStatus
+                                PpgType.PPG_RED -> textPpgRedStatus
+                            }
+                            status.text = "${type.name}: ${getString(R.string.status_measuring)}"
+                        }
+                    }
+                }
+                MessagePath.DATA_ACCELEROMETER -> {
+                    val batch = Gson().fromJson(String(bytes, Charsets.UTF_8), AccelerometerData::class.java) ?: return
+                    if (!batch.isValid()) return
+                    if (watchSession.acceptBatch(batch.sessionId, uri.toString(), 3, batch.size)) {
+                        for (i in 0 until batch.size) {
+                            accXList.add(batch.xValues[i])
+                            accYList.add(batch.yValues[i])
+                            accZList.add(batch.zValues[i])
+                            accTimestampList.add(batch.timestamps[i])
+                        }
+                        accValueNumber += batch.size
+                    }
+                }
+                else -> return
             }
-            MessagePath.DATA_PPG_GREEN -> {
-                val ppgGreenData = Gson().fromJson(String(dataEvent.dataItem.data),
-                    PpgData::class.java)
-                Log.d(TAG, "PPG Green batch received: ${ppgGreenData.size} samples")
-                for (i in 0 until ppgGreenData.size) {
-                    ppgGreenPlotter?.addValues(
-                        ppgGreenData.ppgValues[i],
-                        ppgGreenData.timestamps[i])
-                }
-                ppgGreenValueNumber += ppgGreenData.size
-
-                // Update the status (elapsed time is handled by the coroutine timer)
-                runOnUiThread {
-                    textPpgGreenStatus.text = getString(R.string.ppg_green_status,
-                        getString(R.string.status_measuring))
-                }
-            }
-            MessagePath.DATA_PPG_IR -> {
-                val ppgIrData = Gson().fromJson(String(dataEvent.dataItem.data),
-                    PpgData::class.java)
-                Log.d(TAG, "PPG IR data batch received\n" +
-                        "Data count: ${ppgIrData.size}")
-                for (i in 0 until ppgIrData.size) {
-                    ppgIrPlotter?.addValues(
-                        ppgIrData.ppgValues[i],
-                        ppgIrData.timestamps[i])
-                }
-                ppgIrValueNumber += ppgIrData.size
-
-                // Update the status (elapsed time is handled by the coroutine timer)
-                runOnUiThread {
-                    textPpgIrStatus.text = getString(R.string.ppg_ir_status,
-                        getString(R.string.status_measuring))
-                }
-            }
-            MessagePath.DATA_PPG_RED -> {
-                val ppgRedData = Gson().fromJson(String(dataEvent.dataItem.data),
-                    PpgData::class.java)
-                Log.d(TAG, "PPG Red batch received: ${ppgRedData.size} samples")
-                for (i in 0 until ppgRedData.size) {
-                    ppgRedPlotter?.addValues(
-                        ppgRedData.ppgValues[i],
-                        ppgRedData.timestamps[i])
-                }
-                ppgRedValueNumber += ppgRedData.size
-
-                // Update the status (elapsed time is handled by the coroutine timer)
-                runOnUiThread {
-                    textPpgRedStatus.text = getString(R.string.ppg_red_status,
-                        getString(R.string.status_measuring))
-                }
-            }
+            // Consumed/old unique batches can be removed; retries cannot double count them.
+            Wearable.DataApi.deleteDataItems(client, uri)
+            if (!isRecording) invalidateOptionsMenu()
+        } catch (error: RuntimeException) {
+            Log.w(TAG, "Rejected malformed Watch batch", error)
         }
     }
 
     private fun onMessageArrived(messagePath: String) {
+        if (destroying) return
         val message = wearMessage ?: return
+        if (message.sessionId != 0L && message.sessionId != watchSession.sessionId) return
+        if (messagePath == MessagePath.INFO && desiredWatchCommand != null) {
+            // An old acknowledgement must not overwrite a newer Pause/End request.
+            if (message.commandRevision < watchControl.revision) return
+            if (!watchControl.matches(message)) {
+                if (desiredWatchCommand?.code == ActivityCode.START_ACTIVITY &&
+                    message.code == ActivityCode.STOP_ACTIVITY && message.commandRevision >= watchControl.revision) {
+                    textPpgGreenStatus.text = "Watch session ended; End and Start a new session"
+                    textPpgIrStatus.text = textPpgGreenStatus.text
+                    textPpgRedStatus.text = textPpgGreenStatus.text
+                } else showWatchControlPending()
+                return
+            }
+            watchAcknowledged = true
+            if (message.code != ActivityCode.START_ACTIVITY) controlHandler.removeCallbacks(watchRetry)
+        }
+        if (messagePath == MessagePath.INFO &&
+            message.code == ActivityCode.STOP_ACTIVITY && message.sensorsStopped == true && message.sampleCounts != null) {
+            watchSession.reportStopped(message.sessionId, message.sampleCounts!!)
+        }
         when (messagePath) {
             MessagePath.COMMAND -> {
                 if (message.code == ActivityCode.STOP_ACTIVITY) {
@@ -2370,7 +2497,6 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
                 }
             }
             MessagePath.REQUEST -> {
-                Log.d(TAG, "Received REQUEST message from wear")
             }
             MessagePath.INFO -> {
                 when (message.code) {
@@ -2380,6 +2506,13 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
                     ActivityCode.DO_NOTHING -> toggleState(0)
                     else -> Log.d(TAG, "Unknown activity code: ${message.code}")
                 }
+                message.extraCode?.let { mask ->
+                    isPpgGreenRunning = mask and PpgType.PPG_GREEN.mask != 0
+                    isPpgIrRunning = mask and PpgType.PPG_IR.mask != 0
+                    isPpgRedRunning = mask and PpgType.PPG_RED.mask != 0
+                    if (message.code == ActivityCode.START_ACTIVITY) invalidatePpgState()
+                }
+                invalidateOptionsMenu()
             }
             else -> {
                 Log.d(TAG, "Unknown message path: $messagePath")
@@ -2388,12 +2521,51 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
     }
 
     private fun sendMessage(message: Message, path: String) {
-        val gson = Gson()
-        connectedNode?.forEach { node ->
-            val bytes = gson.toJson(message).toByteArray()
-            Wearable.MessageApi.sendMessage(client, node.id, path, bytes)
-//            Toast.makeText(applicationContext, "Message sent!", Toast.LENGTH_LONG).show()
+        if (!client.isConnected) {
+            if (path == MessagePath.COMMAND) showWatchControlPending()
+            return
         }
+        if (path != MessagePath.COMMAND) message.sessionId = watchSession.sessionId
+        val bytes = Gson().toJson(message).toByteArray(Charsets.UTF_8)
+        Wearable.NodeApi.getConnectedNodes(client).setResultCallback { result ->
+            runOnUiThread {
+                if (destroying || !client.isConnected) return@runOnUiThread
+                connectedNode = if (result.status.isSuccess) result.nodes else emptyList()
+                // Node lookup is asynchronous; discard obsolete requests before sending.
+                if (path == MessagePath.COMMAND && message !== desiredWatchCommand) return@runOnUiThread
+                if (connectedNode.isNullOrEmpty() && path == MessagePath.COMMAND && !watchAcknowledged) showWatchControlPending()
+                connectedNode?.forEach { node ->
+                    Wearable.MessageApi.sendMessage(client, node.id, path, bytes).setResultCallback { sent ->
+                        if (!sent.status.isSuccess) Log.w(TAG, "Watch command delivery failed: ${sent.status.statusCode}")
+                    }
+                }
+            }
+        }
+    }
+
+    private fun requestWatchControl(code: Int) {
+        val id = watchSession.sessionId
+        if (!watchControl.accept(id, watchControl.revision + 1L, code, SystemClock.elapsedRealtime())) return
+        desiredWatchCommand = Message(NAME, "Session control", code, null, id,
+            commandRevision = watchControl.revision)
+        watchAcknowledged = false
+        showWatchControlPending()
+        controlHandler.removeCallbacks(watchRetry)
+        watchRetry.run()
+    }
+
+    private fun showWatchControlPending() {
+        if (destroying) return
+        watchAcknowledged = false
+        val action = when (desiredWatchCommand?.code) {
+            ActivityCode.PAUSE_ACTIVITY -> "Pause"
+            ActivityCode.STOP_ACTIVITY -> "End"
+            else -> "Start/Resume"
+        }
+        val status = "Watch $action awaiting confirmation; reconnect both apps if offline"
+        textPpgGreenStatus.text = status
+        textPpgIrStatus.text = status
+        textPpgRedStatus.text = status
     }
 
     private fun setMessageCode(message: Message, forceCode: Int = 99) {
@@ -2556,7 +2728,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
         msg.append("Polar API Connected: ").append(polarApi != null).append("\n")
         msg.append("Polar Device Connected: ").append(isPolarDeviceConnected).append("\n")
         msg.append("Recording: ").append(isRecording).append("\n")
-        msg.append("Receiving ECG: ").append(ecgDisposable != null)
+        msg.append("Receiving ECG: ").append(ecgStream.isActive)
             .append("\n")
         if (ecgPlotter != null && ecgPlotter!!.getVisibleSeries() != null && ecgPlotter!!.getVisibleSeries()
                 .getyVals() != null
@@ -2592,6 +2764,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
 //        private const val MAX_DEVICES = 3
         const val REQUEST_CODE_PERMISSIONS = 10
         private val REQUIRED_PERMISSIONS = requiredBluetoothPermissions(Build.VERSION.SDK_INT)
+
     }
 
     private fun logEpochInfo(timeZoneString: String) {

@@ -16,3 +16,9 @@ key.properties
 /captures/
 .externalNativeBuild/
 .cxx/
+__pycache__/
+*.pyc
+*.aab
+*.p12
+*.pfx
+*.pem

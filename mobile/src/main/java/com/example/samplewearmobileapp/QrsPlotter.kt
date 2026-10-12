@@ -285,7 +285,7 @@ class QrsPlotter: PlotterListener {
     override fun update() {
         if (plot.visibility == View.GONE) return
         if (dataIndex % 73 == 0L) {
-            parentActivity.runOnUiThread { plot.redraw() }
+            parentActivity.requestPlotRedraw(plot)
         }
     }
 

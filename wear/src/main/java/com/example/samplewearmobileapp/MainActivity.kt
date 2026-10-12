@@ -1,736 +1,496 @@
 package com.example.samplewearmobileapp
 
-import android.content.Intent
-import android.net.Uri
+import android.Manifest
+import android.content.pm.PackageManager
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
+import android.os.Build
 import android.os.Bundle
-import android.provider.Settings
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
 import android.util.Log
 import android.view.View
-import android.widget.LinearLayout
-import android.widget.TextView
 import android.widget.Toast
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
-import androidx.lifecycle.lifecycleScope
 import androidx.wear.ambient.AmbientModeSupport
-import com.example.samplewearmobileapp.Constants.PPG_GREEN_BATCH_SIZE
-import com.example.samplewearmobileapp.Constants.PPG_IR_RED_BATCH_SIZE
-import com.example.samplewearmobileapp.constants.codes.ActivityCode
 import com.example.samplewearmobileapp.constants.Entity
 import com.example.samplewearmobileapp.constants.MessagePath
+import com.example.samplewearmobileapp.constants.codes.ActivityCode
 import com.example.samplewearmobileapp.constants.codes.ExtraCode.TOGGLE_ACTIVITY
 import com.example.samplewearmobileapp.databinding.ActivityMainBinding
+import com.example.samplewearmobileapp.models.AccelerometerData
 import com.example.samplewearmobileapp.models.Message
 import com.example.samplewearmobileapp.models.PpgData
 import com.example.samplewearmobileapp.models.PpgType
-import com.example.samplewearmobileapp.trackers.Listener
-import com.example.samplewearmobileapp.trackers.ppggreen.PpgGreenData
-import com.example.samplewearmobileapp.trackers.ppggreen.PpgGreenListener
-import com.example.samplewearmobileapp.trackers.ppggreen.PpgGreenStatus
-import com.example.samplewearmobileapp.trackers.ppgir.PpgIrData
-import com.example.samplewearmobileapp.trackers.ppgir.PpgIrListener
-import com.example.samplewearmobileapp.trackers.ppgred.PpgRedData
-import com.example.samplewearmobileapp.trackers.ppgred.PpgRedListener
-import com.google.android.gms.wearable.DataClient
-import com.google.android.gms.wearable.MessageClient
-import com.google.android.gms.wearable.MessageEvent
-import com.google.android.gms.wearable.NodeClient
+import com.example.samplewearmobileapp.models.WatchControl
+import com.example.samplewearmobileapp.trackers.PpgContinuousListener
+import com.example.samplewearmobileapp.utils.TimestampHelper
+import com.google.android.gms.common.api.GoogleApiClient
+import com.google.android.gms.wearable.MessageApi
 import com.google.android.gms.wearable.PutDataRequest
 import com.google.android.gms.wearable.Wearable
 import com.google.gson.Gson
 import com.samsung.android.service.health.tracking.HealthTrackerException
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.tasks.await
+import java.util.ArrayDeque
 
-/**
- * Main activity for the Wear OS module.
- *
- * Responsibilities:
- * - Manages Samsung Health sensor lifecycle via [ConnectionManager].
- * - Communicates with the mobile module using the modern Wearable Data Layer
- *   ([MessageClient], [DataClient], [NodeClient]).
- * - Batches PPG readings and sends them to the phone for plotting.
- *
- * **SOLID compliance:**
- * - SRP: sensor-specific logic is in [PpgGreenListener] / [PpgIrListener] /
- *   [PpgRedListener]; this Activity only orchestrates.
- * - OCP: new message paths can be added to [onMessageArrived] without
- *   modifying existing branches.
- * - DIP: depends on [ConnectionObserver], [TrackerDataObserver], [PermissionManager.PermissionCallback].
- */
-class MainActivity :
-    FragmentActivity(),
-    MessageClient.OnMessageReceivedListener,
-    AmbientModeSupport.AmbientCallbackProvider,
-    PermissionManager.PermissionCallback
-{
-    private val tag = "Wear:MainActivity"
-
-    // -------------------------------------------------------------------------
-    // View binding
-    // -------------------------------------------------------------------------
-
+class MainActivity : FragmentActivity(), GoogleApiClient.ConnectionCallbacks,
+    AmbientModeSupport.AmbientCallbackProvider {
     private lateinit var binding: ActivityMainBinding
-    private lateinit var ambientController: AmbientModeSupport.AmbientController
-
-    // -------------------------------------------------------------------------
-    // Permission manager (SRP — all permission logic lives here)
-    // -------------------------------------------------------------------------
-
-    private lateinit var permissionManager: PermissionManager
-
-    // -------------------------------------------------------------------------
-    // Wearable Data Layer (modern API — replaces deprecated GoogleApiClient)
-    // -------------------------------------------------------------------------
-
-    private lateinit var messageClient: MessageClient
-    private lateinit var dataClient: DataClient
-    private lateinit var nodeClient: NodeClient
-
-    // -------------------------------------------------------------------------
-    // Samsung Health SDK
-    // -------------------------------------------------------------------------
-
+    private lateinit var client: GoogleApiClient
     private lateinit var connectionManager: ConnectionManager
-    private lateinit var ppgGreenListener: PpgGreenListener
-    private lateinit var ppgIrListener: PpgIrListener
-    private lateinit var ppgRedListener: PpgRedListener
-    private var isSamsungHealthConnected = false
-
-    // -------------------------------------------------------------------------
-    // Session state
-    // -------------------------------------------------------------------------
-
+    private val mainHandler = Handler(Looper.getMainLooper())
     private val gson = Gson()
-    private var currentMessage: Message? = null
-    private var currentState = 0
+    private var currentState = ActivityCode.DO_NOTHING
+    private var sessionId = 0L
+    private var batchNumber = 0L
+    private var destroying = false
+    private val control = WatchControl()
+    private val safetyTimeout = Runnable {
+        if (!destroying && currentState == ActivityCode.START_ACTIVITY &&
+            control.isExpired(SystemClock.elapsedRealtime())) {
+            stopSession(ActivityCode.PAUSE_ACTIVITY)
+            binding.statusMsg.text = "Controller unavailable; sensors paused"
+        }
+    }
+    private val releaseRetry = Runnable { stopSession(currentState) }
+    private val recordings = PpgType.values().associateWith { PpgRecording(it) }
+    private val counts = PpgType.values().associateWith { 0 }.toMutableMap()
+    private val ppgListener = PpgContinuousListener(::recordPpg, ::showPpgError)
+    private var ppgAvailable = false
+    private var sensorManager: SensorManager? = null
+    private var accelerometer: Sensor? = null
+    private var isAccTracking = false
+    private var isAccRegistered = false
+    private var accCount = 0
+    private var accUnixAnchorMs = 0L
+    private var accElapsedAnchorNanos = 0L
+    private val accRecording = AccelerometerRecording()
+    private val uploads = ArrayDeque<Pair<String, ByteArray>>()
+    private var uploadInFlight = false
 
-    private var currentPpgGreenDataNumber = 0
-    private var currentPpgIrDataNumber = 0
-    private var currentPpgRedDataNumber = 0
+    private val accelerometerListener = object : SensorEventListener {
+        override fun onSensorChanged(event: SensorEvent) {
+            if (!isAccTracking || event.sensor.type != Sensor.TYPE_ACCELEROMETER ||
+                event.values.size < 3 || event.values.take(3).any { !it.isFinite() }) return
+            val timestamp = TimestampHelper.elapsedNanosToUnixMillis(
+                event.timestamp, accElapsedAnchorNanos, accUnixAnchorMs
+            )
+            if (accRecording.timestamps.lastOrNull()?.let { timestamp <= it } == true) return
+            accRecording.add(event.values[0], event.values[1], event.values[2], timestamp)
+            accCount++
+            if (accRecording.getSize() >= Constants.ACCELEROMETER_BATCH_SIZE) {
+                sendAccelerometerData(Constants.ACCELEROMETER_BATCH_SIZE)
+                updateAccelerometerStatus()
+            }
+        }
 
-    private var ppgGreenRecording = PpgRecording(PpgType.PPG_GREEN)
-    private var ppgIrRecording    = PpgRecording(PpgType.PPG_IR)
-    private var ppgRedRecording   = PpgRecording(PpgType.PPG_RED)
+        override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
+    }
 
-    // -------------------------------------------------------------------------
-    // UI references (bound in onCreate after setContentView)
-    // -------------------------------------------------------------------------
-
-    private lateinit var textStatus: TextView
-    private lateinit var textTip: TextView
-
-    private lateinit var ppgGreenContainer: LinearLayout
-    private lateinit var textPpgGreen: TextView
-    private lateinit var textPpgGreenStatus: TextView
-    private lateinit var textPpgGreenNumber: TextView
-    private lateinit var textPpgGreenTimestamp: TextView
-
-    private lateinit var ppgIrContainer: LinearLayout
-    private lateinit var textPpgIr: TextView
-    private lateinit var textPpgIrStatus: TextView
-    private lateinit var textPpgIrNumber: TextView
-    private lateinit var textPpgIrTimestamp: TextView
-
-    private lateinit var ppgRedContainer: LinearLayout
-    private lateinit var textPpgRed: TextView
-    private lateinit var textPpgRedStatus: TextView
-    private lateinit var textPpgRedNumber: TextView
-    private lateinit var textPpgRedTimestamp: TextView
-
-    // -------------------------------------------------------------------------
-    // Samsung Health observer — receives sensor data from listener threads
-    // -------------------------------------------------------------------------
-
-    private val trackerDataObserver: TrackerDataObserver = object : TrackerDataObserver {
-
-        override fun onPpgGreenTrackerDataChanged(ppgGreenData: PpgGreenData) {
-            Log.i(tag, "PPG Green status: ${ppgGreenData.status}")
-            when (ppgGreenData.status) {
-                PpgGreenStatus.PPG_GREEN_STATUS_GOOD.code -> {
-                    currentPpgGreenDataNumber++
-                    runOnUiThread {
-                        textPpgGreenStatus.text = getString(R.string.status_measuring)
-                        textPpgGreen.text = ppgGreenData.ppgValue.toString()
-                        textPpgGreenTimestamp.text = ppgGreenData.timestamp.toString()
-                        textPpgGreenNumber.text = currentPpgGreenDataNumber.toString()
-                    }
+    private val messageListener = MessageApi.MessageListener { event ->
+        val path = event.path
+        val bytes = event.data.copyOf()
+        runOnUiThread {
+            if (!destroying) {
+                try {
+                    val message = gson.fromJson(String(bytes, Charsets.UTF_8), Message::class.java)
+                    if (message != null) onMessageArrived(path, message)
+                } catch (error: RuntimeException) {
+                    Log.w(TAG, "Rejected malformed control message", error)
                 }
-                PpgGreenStatus.PPG_GREEN_STATUS_NONE.code -> {
-                    Log.i(tag, "No PPG Green data this tick")
-                }
-            }
-            ppgGreenRecording.add(ppgGreenData.ppgValue, ppgGreenData.timestamp)
-            if (currentPpgGreenDataNumber % PPG_GREEN_BATCH_SIZE == 0) {
-                sendPpgData(ppgGreenRecording)
-                ppgGreenRecording.clearFromStartUntil(PPG_GREEN_BATCH_SIZE)
-            }
-        }
-
-        override fun onPpgIrTrackerDataChanged(ppgIrData: PpgIrData) {
-            currentPpgIrDataNumber++
-            runOnUiThread {
-                textPpgIrStatus.text = getString(R.string.status_measuring)
-                textPpgIr.text = ppgIrData.ppgValue.toString()
-                textPpgIrTimestamp.text = ppgIrData.timestamp.toString()
-                textPpgIrNumber.text = currentPpgIrDataNumber.toString()
-            }
-            ppgIrRecording.add(ppgIrData.ppgValue, ppgIrData.timestamp)
-            if (currentPpgIrDataNumber % PPG_IR_RED_BATCH_SIZE == 0) {
-                sendPpgData(ppgIrRecording)
-                ppgIrRecording.clearFromStartUntil(PPG_IR_RED_BATCH_SIZE)
-            }
-        }
-
-        override fun onPpgRedTrackerDataChanged(ppgRedData: PpgRedData) {
-            currentPpgRedDataNumber++
-            runOnUiThread {
-                textPpgRedStatus.text = getString(R.string.status_measuring)
-                textPpgRed.text = ppgRedData.ppgValue.toString()
-                textPpgRedTimestamp.text = ppgRedData.timestamp.toString()
-                textPpgRedNumber.text = currentPpgRedDataNumber.toString()
-            }
-            ppgRedRecording.add(ppgRedData.ppgValue, ppgRedData.timestamp)
-            if (currentPpgRedDataNumber % PPG_IR_RED_BATCH_SIZE == 0) {
-                sendPpgData(ppgRedRecording)
-                ppgRedRecording.clearFromStartUntil(PPG_IR_RED_BATCH_SIZE)
-            }
-        }
-
-        override fun onError(errorResourceId: Int) {
-            runOnUiThread {
-                Toast.makeText(applicationContext, getString(errorResourceId), Toast.LENGTH_LONG).show()
             }
         }
     }
 
-    // -------------------------------------------------------------------------
-    // Samsung Health connection observer
-    // -------------------------------------------------------------------------
-
-    private val connectionObserver: ConnectionObserver = object : ConnectionObserver {
-
+    private val connectionObserver = object : ConnectionObserver {
         override fun onConnectionResult(stringResourceId: Int) {
-            if (stringResourceId != R.string.ConnectedToHs) {
-                runOnUiThread {
-                    Toast.makeText(applicationContext, getString(stringResourceId), Toast.LENGTH_LONG).show()
-                }
-                return
-            }
-            isSamsungHealthConnected = true
-            TrackerDataNotifier.instance?.addObserver(trackerDataObserver)
-            ppgGreenListener = PpgGreenListener()
-            ppgIrListener    = PpgIrListener()
-            ppgRedListener   = PpgRedListener()
-            connectionManager.initPpgGreen(ppgGreenListener)
-            connectionManager.initPpgIr(ppgIrListener)
-            connectionManager.initPpgRed(ppgRedListener)
-        }
-
-        override fun onError(e: HealthTrackerException?) {
-            if (e == null) return
-            val messageRes = when {
-                e.errorCode == HealthTrackerException.OLD_PLATFORM_VERSION ||
-                e.errorCode == HealthTrackerException.PACKAGE_NOT_INSTALLED ->
-                    R.string.HealthPlatformVersionIsOutdated
-                else -> R.string.ConnectionError
-            }
             runOnUiThread {
-                Toast.makeText(applicationContext, getString(messageRes), Toast.LENGTH_LONG).show()
+                if (destroying) return@runOnUiThread
+                if (stringResourceId != R.string.ConnectedToHs) {
+                    ppgAvailable = false
+                    ppgListener.stopTracker()
+                    showPpgError(stringResourceId)
+                    return@runOnUiThread
+                }
+                try {
+                    ppgAvailable = connectionManager.initPpg(ppgListener)
+                    if (currentState == ActivityCode.START_ACTIVITY) startPpg()
+                    if (!ppgAvailable) showPpgError(R.string.NoContinuousPpgSupport)
+                } catch (error: RuntimeException) {
+                    ppgAvailable = false
+                    Log.e(TAG, "PPG capability setup failed", error)
+                    showPpgError(R.string.ConnectionError)
+                }
             }
-            if (e.hasResolution()) {
-                e.resolve(this@MainActivity)
-            } else {
-                Log.e(tag, "Samsung Health connection error (no resolution): ${e.message}")
-                finish()
+        }
+
+        override fun onError(error: HealthTrackerException?) {
+            runOnUiThread {
+                ppgAvailable = false
+                ppgListener.stopTracker()
+                showPpgError(R.string.ConnectionError)
+                if (error?.hasResolution() == true) error.resolve(this@MainActivity)
             }
         }
     }
-
-    // -------------------------------------------------------------------------
-    // Ambient mode
-    // -------------------------------------------------------------------------
-
-    private class WearAmbientCallback : AmbientModeSupport.AmbientCallback() {
-        override fun onEnterAmbient(ambientDetails: Bundle?) {
-            Log.i("Wear:Ambient", "Entered ambient mode")
-        }
-        override fun onExitAmbient() {
-            Log.i("Wear:Ambient", "Exited ambient mode")
-        }
-    }
-
-    override fun getAmbientCallback(): AmbientModeSupport.AmbientCallback = WearAmbientCallback()
-
-    // -------------------------------------------------------------------------
-    // Activity lifecycle
-    // -------------------------------------------------------------------------
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        Log.d(tag, "onCreate")
-
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
-        ambientController = AmbientModeSupport.attach(this)
-
-        bindViews()
-        resetUi()
-
-        // Initialise modern Wearable Data Layer clients
-        messageClient = Wearable.getMessageClient(this)
-        dataClient    = Wearable.getDataClient(this)
-        nodeClient    = Wearable.getNodeClient(this)
-
-        // Delegate all permission logic to PermissionManager (SRP)
-        permissionManager = PermissionManager(this, this)
-        permissionManager.startFlow()
-    }
-
-    override fun onResume() {
-        super.onResume()
-        // Register for Wearable messages while the Activity is in the foreground
-        messageClient.addListener(this)
-        Log.d(tag, "MessageClient listener registered")
-
-        // On resume, prompt the phone to reset its state (in case the watch
-        // was restarted mid-session)
-        val resetMsg = Message(Entity.WEAR_APP, ActivityCode.STOP_ACTIVITY).apply {
-            content = "Reset Phone App State"
+        getPreferences(MODE_PRIVATE).let { saved ->
+            control.accept(saved.getLong("session", 0L), saved.getLong("revision", 0L),
+                saved.getInt("state", ActivityCode.DO_NOTHING), SystemClock.elapsedRealtime())
         }
-        sendMessageToPhone(resetMsg, MessagePath.COMMAND)
+        AmbientModeSupport.attach(this)
+        sensorManager = getSystemService(SensorManager::class.java)
+        accelerometer = sensorManager?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+        connectionManager = ConnectionManager(connectionObserver)
+        client = GoogleApiClient.Builder(this)
+            .addConnectionCallbacks(this).addApi(Wearable.API).build()
+        client.connect()
+        updateAccelerometerStatus()
+        if (hasBodySensorPermission()) connectSamsung()
+        else ActivityCompat.requestPermissions(this,
+            if (Build.VERSION.SDK_INT >= 34) arrayOf(Manifest.permission.BODY_SENSORS, Manifest.permission.ACTIVITY_RECOGNITION)
+            else arrayOf(Manifest.permission.BODY_SENSORS), REQUEST_PERMISSIONS)
     }
 
-    override fun onPause() {
-        super.onPause()
-        messageClient.removeListener(this)
-        Log.d(tag, "MessageClient listener removed")
+    private fun connectSamsung() {
+        try {
+            connectionManager.connect(applicationContext)
+        } catch (error: RuntimeException) {
+            Log.e(TAG, "Samsung service unavailable", error)
+            showPpgError(R.string.ConnectionError)
+        }
     }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQUEST_PERMISSIONS) {
+            if (hasBodySensorPermission()) connectSamsung()
+            else showPpgError(R.string.NoPermission)
+        }
+    }
+
+    override fun onConnected(bundle: Bundle?) {
+        Wearable.MessageApi.addListener(client, messageListener)
+        sendState()
+        drainUploads()
+    }
+
+    override fun onConnectionSuspended(code: Int) {
+        Log.w(TAG, "Wearable transport suspended; unsent batches retained")
+    }
+
+    private fun onMessageArrived(path: String, message: Message) {
+        when (path) {
+            MessagePath.COMMAND -> {
+                if (!control.accept(message.sessionId, message.commandRevision, message.code,
+                        SystemClock.elapsedRealtime())) {
+                    sendState()
+                    return
+                }
+                persistControl()
+                mainHandler.removeCallbacks(safetyTimeout)
+                if (message.code == ActivityCode.START_ACTIVITY) {
+                    startSession(message.sessionId)
+                    mainHandler.postDelayed(safetyTimeout, WatchControl.TIMEOUT_MS)
+                } else {
+                    // End must also be acknowledged when its Start was lost in transit.
+                    if (message.sessionId != sessionId) {
+                        stopSession(message.code)
+                        if (ppgListener.isRegistered() || isAccRegistered) return
+                        resetSession(message.sessionId)
+                    }
+                    stopSession(message.code)
+                }
+            }
+            MessagePath.REQUEST -> sendState()
+            MessagePath.INFO -> Unit
+            MessagePath.DATA_PPG_GREEN, MessagePath.DATA_PPG_IR, MessagePath.DATA_PPG_RED -> {
+                if (currentState != ActivityCode.START_ACTIVITY || message.sessionId != sessionId) return
+                val type = when (path) {
+                    MessagePath.DATA_PPG_GREEN -> PpgType.PPG_GREEN
+                    MessagePath.DATA_PPG_IR -> PpgType.PPG_IR
+                    else -> PpgType.PPG_RED
+                }
+                if (message.code == ActivityCode.STOP_ACTIVITY ||
+                    (message.extraCode == TOGGLE_ACTIVITY && type in ppgListener.channels)) {
+                    ppgListener.channels.remove(type)
+                    sendPpgData(type, recordings.getValue(type).getSize() ?: 0)
+                } else if (message.code == ActivityCode.START_ACTIVITY) {
+                    ppgListener.channels.add(type)
+                }
+                if (ppgListener.channels.isEmpty()) ppgListener.stopTracker() else startPpg()
+                updatePpgStatuses()
+                sendState()
+            }
+        }
+    }
+
+    private fun startSession(id: Long) {
+        if (id <= 0L) {
+            Toast.makeText(this, R.string.UpdateBothApps, Toast.LENGTH_LONG).show()
+            return
+        }
+        if (id == sessionId && currentState == ActivityCode.START_ACTIVITY) {
+            sendState()
+            return
+        }
+        mainHandler.removeCallbacks(releaseRetry)
+        if (id != sessionId) {
+            if (!stopTrackers()) {
+                stopSession(ActivityCode.PAUSE_ACTIVITY)
+                return
+            }
+            flushRemainingData()
+            resetSession(id)
+        } else if (ppgListener.isRegistered() || isAccRegistered) {
+            if (!stopTrackers()) {
+                stopSession(ActivityCode.PAUSE_ACTIVITY)
+                return
+            }
+        }
+        try {
+            MainService.startService(this, "Recording sensors")
+        } catch (error: RuntimeException) {
+            Log.e(TAG, "Foreground recording service could not start", error)
+            binding.statusMsg.setText(R.string.status_failed)
+            currentState = ActivityCode.STOP_ACTIVITY
+            sendState()
+            return
+        }
+        currentState = ActivityCode.START_ACTIVITY
+        startAccelerometerTracker()
+        startPpg()
+        binding.statusMsg.setText(R.string.status_running)
+        updatePpgStatuses()
+        sendState()
+    }
+
+    private fun resetSession(id: Long) {
+        recordings.values.forEach { it.clear() }
+        counts.keys.forEach { counts[it] = 0 }
+        accRecording.clear()
+        accCount = 0
+        sessionId = id
+        batchNumber = 0L
+        ppgListener.channels.clear()
+        ppgListener.channels.addAll(PpgType.values())
+    }
+
+    private fun persistControl() {
+        getPreferences(MODE_PRIVATE).edit().putLong("session", control.sessionId)
+            .putLong("revision", control.revision).putInt("state", control.code).apply()
+    }
+
+    private fun stopSession(state: Int) {
+        mainHandler.removeCallbacks(safetyTimeout)
+        mainHandler.removeCallbacks(releaseRetry)
+        currentState = state
+        val released = stopTrackers()
+        flushRemainingData()
+        binding.statusMsg.setText(if (!released) R.string.status_failed
+            else if (state == ActivityCode.PAUSE_ACTIVITY) R.string.status_paused else R.string.status_stopped)
+        updatePpgStatuses()
+        updateAccelerometerStatus()
+        sendState()
+        // Release the wake lock immediately, including while final uploads are pending.
+        if (state == ActivityCode.PAUSE_ACTIVITY || uploads.isNotEmpty() || !released) {
+            MainService.startService(this, "Paused")
+        } else MainService.stopService(this)
+        if (!released) mainHandler.postDelayed(releaseRetry, 1_000L)
+    }
+
+    private fun startAccelerometerTracker() {
+        if (isAccTracking) return
+        accUnixAnchorMs = System.currentTimeMillis()
+        accElapsedAnchorNanos = SystemClock.elapsedRealtimeNanos()
+        isAccTracking = try {
+            accelerometer != null && sensorManager?.registerListener(
+                accelerometerListener, accelerometer, 40_000
+            ) == true
+        } catch (error: RuntimeException) {
+            Log.e(TAG, "Accelerometer registration failed", error)
+            false
+        }
+        isAccRegistered = isAccTracking
+        updateAccelerometerStatus()
+    }
+
+    private fun startPpg() {
+        if (ppgAvailable && hasBodySensorPermission() && ppgListener.channels.isNotEmpty()) {
+            ppgListener.startTracker()
+        }
+    }
+
+    private fun stopTrackers(): Boolean {
+        val ppgReleased = ppgListener.stopTracker()
+        isAccTracking = false
+        try {
+            sensorManager?.unregisterListener(accelerometerListener)
+            isAccRegistered = false
+        } catch (error: RuntimeException) {
+            Log.e(TAG, "Accelerometer release failed; retained for retry", error)
+        }
+        return ppgReleased && !isAccRegistered
+    }
+
+    private fun recordPpg(type: PpgType, value: Int, timestamp: Long) {
+        if (currentState != ActivityCode.START_ACTIVITY) return
+        val recording = recordings.getValue(type)
+        if (recording.timestamps.lastOrNull()?.let { timestamp <= it } == true) return
+        recording.add(value, timestamp)
+        counts[type] = counts.getValue(type) + 1
+        val fields = when (type) {
+            PpgType.PPG_GREEN -> listOf(binding.ppgGreen, binding.ppgGreenTimestamp, binding.ppgGreenNumber, binding.ppgGreenStatus)
+            PpgType.PPG_IR -> listOf(binding.ppgIr, binding.ppgIrTimestamp, binding.ppgIrNumber, binding.ppgIrStatus)
+            PpgType.PPG_RED -> listOf(binding.ppgRed, binding.ppgRedTimestamp, binding.ppgRedNumber, binding.ppgRedStatus)
+        }
+        fields[0].text = value.toString()
+        fields[1].text = timestamp.toString()
+        fields[2].text = counts.getValue(type).toString()
+        fields[3].setText(R.string.status_measuring)
+        if ((recording.getSize() ?: 0) >= Constants.PPG_GREEN_BATCH_SIZE) {
+            sendPpgData(type, Constants.PPG_GREEN_BATCH_SIZE)
+        }
+    }
+
+    private fun sendPpgData(type: PpgType, size: Int) {
+        if (size <= 0) return
+        val recording = recordings.getValue(type)
+        val batch = PpgData(
+            recording.values.take(size).toIntArray(), recording.timestamps.take(size).toLongArray(),
+            type, size, size, sessionId
+        )
+        val path = when (type) {
+            PpgType.PPG_GREEN -> MessagePath.DATA_PPG_GREEN
+            PpgType.PPG_IR -> MessagePath.DATA_PPG_IR
+            PpgType.PPG_RED -> MessagePath.DATA_PPG_RED
+        }
+        queueBatch(path, batch)
+        recording.clearFromStartUntil(size)
+    }
+
+    private fun sendAccelerometerData(size: Int) {
+        if (size <= 0) return
+        val batch = AccelerometerData(
+            accRecording.xValues.take(size).toFloatArray(), accRecording.yValues.take(size).toFloatArray(),
+            accRecording.zValues.take(size).toFloatArray(), accRecording.timestamps.take(size).toLongArray(),
+            size, size, sessionId
+        )
+        queueBatch(MessagePath.DATA_ACCELEROMETER, batch)
+        accRecording.clearFromStartUntil(size)
+    }
+
+    private fun flushRemainingData() {
+        for ((type, recording) in recordings) sendPpgData(type, recording.getSize() ?: 0)
+        sendAccelerometerData(accRecording.getSize())
+    }
+
+    private fun queueBatch(path: String, batch: Any) {
+        uploads.addLast(Pair("$path/$sessionId/${batchNumber++}", gson.toJson(batch).toByteArray(Charsets.UTF_8)))
+        drainUploads()
+    }
+
+    private fun drainUploads() {
+        if (uploadInFlight || !client.isConnected) return
+        if (uploads.isEmpty()) {
+            if ((currentState == ActivityCode.STOP_ACTIVITY || currentState == ActivityCode.DO_NOTHING) &&
+                !ppgListener.isRegistered() && !isAccRegistered) {
+                MainService.stopService(this)
+            }
+            if (destroying) client.disconnect()
+            return
+        }
+        uploadInFlight = true
+        val batch = uploads.first
+        Wearable.DataApi.putDataItem(client, PutDataRequest.create(batch.first).setData(batch.second).setUrgent())
+            .setResultCallback { result ->
+                uploadInFlight = false
+                if (result.status.isSuccess) {
+                    uploads.removeFirst()
+                    drainUploads()
+                } else {
+                    Log.e(TAG, "Batch upload failed; retained for retry: ${result.status.statusCode}")
+                    mainHandler.postDelayed({ drainUploads() }, 1000L)
+                }
+            }
+    }
+
+    private fun sendState() {
+        if (!client.isConnected) return
+        val mask = if (ppgListener.isTracking()) ppgListener.channels.sumOf { it.mask } else 0
+        val state = Message(Entity.WEAR_APP, "Watch sensor state", currentState, mask, sessionId,
+            intArrayOf(counts.getValue(PpgType.PPG_GREEN), counts.getValue(PpgType.PPG_IR),
+                counts.getValue(PpgType.PPG_RED), accCount), control.revision,
+            !ppgListener.isRegistered() && !isAccRegistered)
+        val bytes = gson.toJson(state).toByteArray(Charsets.UTF_8)
+        Wearable.NodeApi.getConnectedNodes(client).setResultCallback { nodes ->
+            for (node in nodes.nodes) Wearable.MessageApi.sendMessage(client, node.id, MessagePath.INFO, bytes)
+        }
+    }
+
+    private fun showPpgError(resource: Int) {
+        Toast.makeText(this, resource, Toast.LENGTH_LONG).show()
+        binding.ppgGreenStatus.setText(resource)
+        binding.ppgIrStatus.setText(resource)
+        binding.ppgRedStatus.setText(resource)
+        sendState()
+    }
+
+    private fun updatePpgStatuses() {
+        binding.ppgGreenContainer.visibility = View.VISIBLE
+        binding.ppgIrContainer.visibility = View.VISIBLE
+        binding.ppgRedContainer.visibility = View.VISIBLE
+        val statuses = listOf(binding.ppgGreenStatus, binding.ppgIrStatus, binding.ppgRedStatus)
+        for (type in PpgType.values()) {
+            statuses[type.ordinal].setText(when {
+                !ppgAvailable || !hasBodySensorPermission() -> R.string.NoContinuousPpgSupport
+                currentState == ActivityCode.PAUSE_ACTIVITY -> R.string.status_paused
+                currentState != ActivityCode.START_ACTIVITY || type !in ppgListener.channels -> R.string.status_stopped
+                else -> R.string.status_waiting
+            })
+        }
+    }
+
+    private fun updateAccelerometerStatus() {
+        binding.message.visibility = View.VISIBLE
+        binding.message.text = when {
+            accelerometer == null -> getString(R.string.NoAccelerometerSupport)
+            currentState == ActivityCode.START_ACTIVITY && !isAccTracking -> getString(R.string.AccelerometerFailed)
+            else -> getString(R.string.accelerometer_samples, accCount)
+        }
+    }
+
+    private fun hasBodySensorPermission() = ContextCompat.checkSelfPermission(
+        this, Manifest.permission.BODY_SENSORS
+    ) == PackageManager.PERMISSION_GRANTED
 
     override fun onDestroy() {
-        Log.d(tag, "onDestroy")
-        if (isSamsungHealthConnected) {
-            ppgGreenListener.stopTracker()
-            ppgIrListener.stopTracker()
-            ppgRedListener.stopTracker()
-            TrackerDataNotifier.instance?.removeObserver(trackerDataObserver)
-            connectionManager.disconnect()
-        }
+        destroying = true
+        control.accept(control.sessionId, control.revision + 1L, ActivityCode.STOP_ACTIVITY,
+            SystemClock.elapsedRealtime())
+        persistControl()
+        stopSession(ActivityCode.STOP_ACTIVITY)
+        connectionManager.disconnect()
+        mainHandler.removeCallbacks(releaseRetry)
+        Wearable.MessageApi.removeListener(client, messageListener)
+        drainUploads()
+        if (uploads.isEmpty()) MainService.stopService(this)
         super.onDestroy()
     }
 
-    // -------------------------------------------------------------------------
-    // Permission handling — delegated to PermissionManager (SRP)
-    // -------------------------------------------------------------------------
-
-    override fun onRequestPermissionsResult(
-        requestCode: Int,
-        permissions: Array<out String>,
-        grantResults: IntArray
-    ) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        permissionManager.onPermissionResult(requestCode, permissions, grantResults)
-    }
-
-    // -- PermissionManager.PermissionCallback --
-
-    /** All required permissions granted; bootstrap Samsung Health. */
-    override fun onAllPermissionsGranted() {
-        Log.d(tag, "All permissions granted — connecting to Samsung Health")
-        createConnectionManager()
-    }
-
-    /**
-     * User denied at least one permission but can still be asked again.
-     * Show a rationale toast; do NOT close the app.
-     */
-    override fun onPermissionsDenied() {
-        Log.w(tag, "Permissions denied — showing rationale")
-        Toast.makeText(this, getString(R.string.permission_rationale), Toast.LENGTH_LONG).show()
-    }
-
-    /**
-     * Permission permanently denied or background sensor needs manual Settings toggle.
-     * Opens the app's Settings page so the user can grant it manually.
-     */
-    override fun onPermissionsPermanentlyDenied() {
-        Log.w(tag, "Permissions permanently denied — opening Settings")
-        Toast.makeText(this, getString(R.string.permission_settings_guide), Toast.LENGTH_LONG).show()
-        val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-            data = Uri.fromParts("package", packageName, null)
-        }
-        startActivity(intent)
-    }
-
-    // -------------------------------------------------------------------------
-    // MessageClient.OnMessageReceivedListener — receives from phone
-    // -------------------------------------------------------------------------
-
-    /**
-     * Called on a background thread by the Wearable Data Layer whenever
-     * the phone sends a message to this watch app.
-     */
-    override fun onMessageReceived(messageEvent: MessageEvent) {
-        currentMessage = gson.fromJson(String(messageEvent.data), Message::class.java)
-        onMessageArrived(messageEvent.path)
-    }
-
-    // -------------------------------------------------------------------------
-    // Message dispatch
-    // -------------------------------------------------------------------------
-
-    private fun onMessageArrived(messagePath: String) {
-        if (!isSamsungHealthConnected) {
-            Log.w(tag, "onMessageArrived: Samsung Health not ready, ignoring '$messagePath'")
-            return
-        }
-        currentMessage?.let { msg ->
-            when (messagePath) {
-                MessagePath.COMMAND -> handleCommandMessage(msg)
-                MessagePath.REQUEST -> handleRequestMessage(msg)
-                MessagePath.INFO    -> Log.d(tag, "INFO path received (not yet implemented)")
-                MessagePath.DATA_PPG_GREEN -> handlePpgMessage(msg, ppgGreenListener,
-                    showContainer = { showPpgGreenContainer() },
-                    stopStatus   = { setPpgGreenStatus(R.string.status_stopped) })
-                MessagePath.DATA_PPG_IR  -> handlePpgMessage(msg, ppgIrListener,
-                    showContainer = { showPpgIrContainer() },
-                    stopStatus   = { setPpgIrStatus(R.string.status_stopped) })
-                MessagePath.DATA_PPG_RED -> handlePpgMessage(msg, ppgRedListener,
-                    showContainer = { showPpgRedContainer() },
-                    stopStatus   = { setPpgRedStatus(R.string.status_stopped) })
-                else -> Log.w(tag, "Unknown message path: $messagePath")
-            }
-        }
-    }
-
-    // -------------------------------------------------------------------------
-    // Command / Request handlers (DRY: each branch is a single function call)
-    // -------------------------------------------------------------------------
-
-    private fun handleCommandMessage(msg: Message) {
-        when (msg.code) {
-            ActivityCode.START_ACTIVITY -> {
-                runOnUiThread {
-                    ppgGreenContainer.visibility = View.VISIBLE
-                    ppgIrContainer.visibility    = View.VISIBLE
-                    ppgRedContainer.visibility   = View.VISIBLE
-                    textTip.visibility           = View.GONE
-                    textStatus.text              = getString(R.string.status_running)
-                }
-                switchState(ActivityCode.START_ACTIVITY)
-                startAllTrackers()
-            }
-            ActivityCode.STOP_ACTIVITY -> {
-                flushRemainingData()
-                runOnUiThread {
-                    textStatus.text         = getString(R.string.status_stopped)
-                    textPpgGreenStatus.text = getString(R.string.status_stopped)
-                    textPpgIrStatus.text    = getString(R.string.status_stopped)
-                    textPpgRedStatus.text   = getString(R.string.status_stopped)
-                }
-                switchState(ActivityCode.STOP_ACTIVITY)
-                stopAllTrackers()
-            }
-            ActivityCode.PAUSE_ACTIVITY -> {
-                runOnUiThread {
-                    textStatus.text         = getString(R.string.status_paused)
-                    textPpgGreenStatus.text = getString(R.string.status_paused)
-                    textPpgIrStatus.text    = getString(R.string.status_paused)
-                    textPpgRedStatus.text   = getString(R.string.status_paused)
-                }
-                stopAllTrackers()
-                switchState(ActivityCode.PAUSE_ACTIVITY)
-            }
-            ActivityCode.DO_NOTHING -> {
-                runOnUiThread {
-                    Toast.makeText(applicationContext, getString(R.string.no_content), Toast.LENGTH_LONG).show()
-                }
-            }
-        }
-    }
-
-    private fun handleRequestMessage(msg: Message) {
-        if (msg.code == ActivityCode.START_ACTIVITY) {
-            Log.i(tag, "State request received from phone")
-            switchState(currentState)
-        }
-    }
-
-    /**
-     * DRY handler for individual PPG channel messages.
-     * All three channels (Green, IR, Red) share identical start/stop/toggle logic.
-     */
-    private fun handlePpgMessage(
-        msg: Message,
-        listener: Listener,
-        showContainer: () -> Unit,
-        stopStatus: () -> Unit
-    ) {
-        when (msg.code) {
-            ActivityCode.START_ACTIVITY -> {
-                runOnUiThread {
-                    showContainer()
-                    textTip.visibility = View.GONE
-                    textStatus.text = getString(R.string.status_running)
-                }
-                if (msg.extraCode == TOGGLE_ACTIVITY) {
-                    toggleTracker(listener)
-                    invalidateAppStatus()
-                } else {
-                    startTracker(listener)
-                }
-            }
-            ActivityCode.STOP_ACTIVITY -> {
-                stopTracker(listener)
-                runOnUiThread { stopStatus() }
-                invalidateAppStatus()
-            }
-        }
-    }
-
-    // -------------------------------------------------------------------------
-    // Tracker management
-    // -------------------------------------------------------------------------
-
-    private fun startAllTrackers() {
-        startTracker(ppgGreenListener)
-        startTracker(ppgIrListener)
-        startTracker(ppgRedListener)
-    }
-
-    private fun stopAllTrackers() {
-        ppgGreenListener.stopTracker()
-        ppgIrListener.stopTracker()
-        ppgRedListener.stopTracker()
-    }
-
-    private fun startTracker(listener: Listener) {
-        listener.startTracker()
-        MainService.startService(this, "Tracker is running...")
-    }
-
-    private fun stopTracker(listener: Listener) {
-        listener.stopTracker()
-    }
-
-    private fun toggleTracker(listener: Listener) {
-        if (listener.isTracking()) listener.stopTracker()
-        else startTracker(listener)
-    }
-
-    /**
-     * If all trackers have stopped, resets the UI status labels and
-     * stops the foreground [MainService].
-     *
-     * @return `true` if invalidation occurred (all stopped).
-     */
-    private fun invalidateAppStatus(): Boolean {
-        val allStopped = !ppgGreenListener.isTracking() &&
-                         !ppgIrListener.isTracking()    &&
-                         !ppgRedListener.isTracking()
-        if (allStopped) {
-            runOnUiThread {
-                textStatus.text         = getString(R.string.status_stopped)
-                textPpgGreenStatus.text = getString(R.string.status_stopped)
-                textPpgIrStatus.text    = getString(R.string.status_stopped)
-                textPpgRedStatus.text   = getString(R.string.status_stopped)
-            }
-            MainService.stopService(this)
-        }
-        return allStopped
-    }
-
-    // -------------------------------------------------------------------------
-    // Data transmission — modern DataClient (replaces deprecated DataApi)
-    // -------------------------------------------------------------------------
-
-    /**
-     * Serialises a [PpgRecording] window and sends it to the phone
-     * via the Wearable Data Layer [DataClient].
-     *
-     * @param recording The buffer to send.
-     * @param actualSize If non-null, overrides the default batch size
-     *                   (used for partial flushes on stop).
-     */
-    private fun sendPpgData(recording: PpgRecording, actualSize: Int? = null) {
-        val (path, windowSize) = when (recording.ppgType) {
-            PpgType.PPG_GREEN -> MessagePath.DATA_PPG_GREEN to (actualSize ?: PPG_GREEN_BATCH_SIZE)
-            PpgType.PPG_IR    -> MessagePath.DATA_PPG_IR    to (actualSize ?: PPG_IR_RED_BATCH_SIZE)
-            PpgType.PPG_RED   -> MessagePath.DATA_PPG_RED   to (actualSize ?: PPG_IR_RED_BATCH_SIZE)
-        }
-
-        val ppgData = PpgData(windowSize, recording.ppgType).apply {
-            for (i in 0 until windowSize) {
-                ppgValues[i]  = recording.values[i]
-                timestamps[i] = recording.timestamps[i]
-                size++
-            }
-        }
-
-        val bytes = gson.toJson(ppgData).toByteArray()
-        lifecycleScope.launch {
-            runCatching {
-                dataClient.putDataItem(
-                    PutDataRequest.create(path).setData(bytes).setUrgent()
-                ).await()
-            }.onFailure { e ->
-                Log.e(tag, "sendPpgData failed for $path: ${e.message}")
-            }
-        }
-        Log.i(tag, "PPG Data sent via DataClient — path=$path size=$windowSize")
-    }
-
-    /**
-     * Flushes any partial PPG data remaining in all three buffers.
-     * Called before stopping trackers to prevent data loss at the end
-     * of a recording session.
-     */
-    private fun flushRemainingData() {
-        listOf(ppgGreenRecording, ppgIrRecording, ppgRedRecording).forEach { recording ->
-            val remaining = recording.getSize() ?: 0
-            if (remaining > 0) {
-                sendPpgData(recording, remaining)
-                recording.clearFromStartUntil(remaining)
-                Log.i(tag, "Flushed $remaining remaining ${recording.ppgType} data points")
-            }
-        }
-    }
-
-    // -------------------------------------------------------------------------
-    // Message transmission — modern MessageClient (replaces deprecated MessageApi)
-    // -------------------------------------------------------------------------
-
-    /**
-     * Sends a [Message] to all connected phone nodes using [MessageClient].
-     *
-     * Runs in a coroutine on [lifecycleScope] so it never blocks the UI thread.
-     */
-    private fun sendMessageToPhone(message: Message, path: String) {
-        lifecycleScope.launch {
-            runCatching {
-                val nodes = nodeClient.connectedNodes.await()
-                if (nodes.isEmpty()) {
-                    Log.w(tag, "sendMessageToPhone: no connected nodes for path=$path")
-                    return@launch
-                }
-                val bytes = gson.toJson(message).toByteArray()
-                nodes.forEach { node ->
-                    messageClient.sendMessage(node.id, path, bytes).await()
-                    Log.i(tag, "Message sent to phone — path=$path")
-                }
-            }.onFailure { e ->
-                Log.e(tag, "sendMessageToPhone failed: ${e.message}")
-            }
-        }
-    }
-
-    // -------------------------------------------------------------------------
-    // State machine
-    // -------------------------------------------------------------------------
-
-    /**
-     * Sets [currentState] and notifies the phone of the new state via an
-     * INFO message.
-     *
-     * Supported codes:
-     * - [ActivityCode.DO_NOTHING] / 0 — Stopped
-     * - [ActivityCode.START_ACTIVITY] / 1 — Running
-     * - [ActivityCode.STOP_ACTIVITY] / 2 — Stopped
-     * - [ActivityCode.PAUSE_ACTIVITY] / 3 — Paused
-     *
-     * @param forceCode When provided, sets the state directly.
-     *                  When omitted (default), toggles between 0 and 1.
-     */
-    private fun switchState(forceCode: Int = STATE_TOGGLE) {
-        currentState = when {
-            forceCode != STATE_TOGGLE -> forceCode
-            currentState == 0         -> ActivityCode.START_ACTIVITY
-            else                      -> ActivityCode.DO_NOTHING
-        }
-        val stateMessage = Message(Entity.WEAR_APP, currentState).apply {
-            content = "Wear state: $currentState"
-        }
-        sendMessageToPhone(stateMessage, MessagePath.INFO)
-        Log.d(tag, "State changed to: $currentState")
-    }
-
-    // -------------------------------------------------------------------------
-    // Samsung Health connection bootstrap
-    // -------------------------------------------------------------------------
-
-    private fun createConnectionManager() {
-        try {
-            connectionManager = ConnectionManager(connectionObserver)
-            connectionManager.connect(applicationContext)
-        } catch (t: Throwable) {
-            Log.e(tag, "Failed to create ConnectionManager: ${t.message ?: "unknown error"}")
-        }
-    }
-
-    // -------------------------------------------------------------------------
-    // UI helpers
-    // -------------------------------------------------------------------------
-
-    private fun bindViews() {
-        textStatus = binding.statusMsg
-        textTip    = binding.message
-
-        ppgGreenContainer   = binding.ppgGreenContainer
-        textPpgGreenStatus  = binding.ppgGreenStatus
-        textPpgGreenNumber  = binding.ppgGreenNumber
-        textPpgGreen        = binding.ppgGreen
-        textPpgGreenTimestamp = binding.ppgGreenTimestamp
-
-        ppgIrContainer   = binding.ppgIrContainer
-        textPpgIrStatus  = binding.ppgIrStatus
-        textPpgIrNumber  = binding.ppgIrNumber
-        textPpgIr        = binding.ppgIr
-        textPpgIrTimestamp = binding.ppgIrTimestamp
-
-        ppgRedContainer   = binding.ppgRedContainer
-        textPpgRedStatus  = binding.ppgRedStatus
-        textPpgRedNumber  = binding.ppgRedNumber
-        textPpgRed        = binding.ppgRed
-        textPpgRedTimestamp = binding.ppgRedTimestamp
-    }
-
-    private fun resetUi() {
-        textStatus.text           = getString(R.string.default_status)
-        textTip.text              = getString(R.string.message_placeholder)
-        textPpgGreenStatus.text   = getString(R.string.default_status)
-        textPpgGreenNumber.text   = getString(R.string.default_value)
-        textPpgGreen.text         = getString(R.string.default_value)
-        textPpgGreenTimestamp.text = getString(R.string.default_value)
-        textPpgIrStatus.text      = getString(R.string.default_status)
-        textPpgIrNumber.text      = getString(R.string.default_value)
-        textPpgIr.text            = getString(R.string.default_value)
-        textPpgIrTimestamp.text   = getString(R.string.default_value)
-        textPpgRedStatus.text     = getString(R.string.default_status)
-        textPpgRedNumber.text     = getString(R.string.default_value)
-        textPpgRed.text           = getString(R.string.default_value)
-        textPpgRedTimestamp.text  = getString(R.string.default_value)
-
-        textTip.visibility        = View.VISIBLE
-        ppgGreenContainer.visibility = View.GONE
-        ppgIrContainer.visibility    = View.GONE
-        ppgRedContainer.visibility   = View.GONE
-    }
-
-    // DRY: per-container show helpers (used in handlePpgMessage lambdas)
-    private fun showPpgGreenContainer() { ppgGreenContainer.visibility = View.VISIBLE }
-    private fun showPpgIrContainer()    { ppgIrContainer.visibility    = View.VISIBLE }
-    private fun showPpgRedContainer()   { ppgRedContainer.visibility   = View.VISIBLE }
-
-    // DRY: per-channel stopped-status helpers
-    private fun setPpgGreenStatus(res: Int) { textPpgGreenStatus.text = getString(res) }
-    private fun setPpgIrStatus(res: Int)    { textPpgIrStatus.text    = getString(res) }
-    private fun setPpgRedStatus(res: Int)   { textPpgRedStatus.text   = getString(res) }
-
-    // -------------------------------------------------------------------------
-    // Companion — constants
-    // -------------------------------------------------------------------------
+    override fun getAmbientCallback() = object : AmbientModeSupport.AmbientCallback() {}
 
     companion object {
-        /** Sentinel value: when passed to [switchState], toggles 0↔1. */
-        private const val STATE_TOGGLE = -1
+        private const val TAG = "Wear: MainActivity"
+        private const val REQUEST_PERMISSIONS = 10
     }
 }

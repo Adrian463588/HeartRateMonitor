@@ -31,7 +31,7 @@ object Constants {
      * @see PPG_GREEN_SAMPLE_RATE
      * @see ECG_SAMPLE_RATE
      */
-    const val PPG_IR_RED_SAMPLE_RATE: Double = 100.0
+    const val PPG_IR_RED_SAMPLE_RATE: Double = 25.0 // Samsung PPG_CONTINUOUS
 
     /**
      * Number of small boxes in a large box.

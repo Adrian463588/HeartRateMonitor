@@ -9,6 +9,7 @@ import com.example.samplewearmobileapp.utils.AppUtils
 import java.text.*
 import java.util.*
 import kotlin.math.ceil
+import com.example.samplewearmobileapp.utils.TimestampHelper
 import kotlin.math.roundToInt
 import kotlin.math.roundToLong
 
@@ -176,7 +177,7 @@ class HrPlotter: PlotterListener {
                     toAppendTo: StringBuffer,
                     pos: FieldPosition
                 ): StringBuffer {
-                    val time = (obj as Number).toDouble().roundToInt()
+                    val time = (obj as Number).toDouble().roundToLong()
                     return dateFormat.format(time, toAppendTo, pos)
                 }
 
@@ -188,6 +189,8 @@ class HrPlotter: PlotterListener {
                 }
             }
 
+//            // Allow panning
+//            PanZoom.attach(mPlot, PanZoom.Pan.HORIZONTAL, PanZoom.Zoom.NONE);
             update()
         } catch (ex: Exception) {
             val msg = """Error in HrPlotter.setupPlot:
@@ -205,6 +208,15 @@ class HrPlotter: PlotterListener {
 //                mHrSeries1.size());
         if (plotHr1 || plotRr1) {
             hrRrList1.add(HrRrSessionData(time, hr, rrsMs))
+            //            StringBuilder sb = new StringBuilder();
+//            sb.append("HRPlotter: addValues1");
+//            sb.append(" time=");
+//            sb.append(X_AXIS_DATE_FORMAT.format(new Date(Math.round(time))));
+//            sb.append(" hr=").append(Math.round(hr)).append(" rr=");
+//            for (int rr : rrsMs) {
+//                sb.append(rr).append(" ");
+//            }
+//            Log.d(TAG, sb.toString());
             if (java.lang.Double.isNaN(startTime)) startTime = time
             if (java.lang.Double.isNaN(lastTime)) {
                 lastTime = time
@@ -219,61 +231,15 @@ class HrPlotter: PlotterListener {
             hrSeries1!!.addLast(time, hr)
         }
 
-        // RR
-        val rrValuesCount = rrsMs.size
-        if (plotRr1 && rrValuesCount > 0) {
-            val tValues = DoubleArray(rrValuesCount)
-            val rrValues = arrayOfNulls<Int>(rrValuesCount)
-
-//            rrValues = rrsMs.toArray(rrValues)
-            // replicate toArray() function
+        // Polar SDK supplies milliseconds, not raw BLE 1/1024-second values.
+        if (plotRr1 && rrsMs.isNotEmpty() && rrsMs.all { it > 0 }) {
+            val timestamps = TimestampHelper.rrTimestampsFromReceipt(time.roundToLong(), rrsMs)
             for (i in rrsMs.indices) {
-                rrValues[i] = rrsMs[i]
+                val value = RR_SCALE * rrsMs[i]
+                runningMax1.add(value)
+                rrSeries1!!.addLast(timestamps[i], value)
             }
-
-            // Find the sum of the RR intervals
-            var totalRr = 0.0
-            for (i in 0 until rrValuesCount) {
-                totalRr += rrValues[i]!!.toDouble()
-            }
-            // First time
-            if (java.lang.Double.isInfinite(startRrTime)) {
-                lastUpdateTime = time - totalRr
-                lastRrTime = lastUpdateTime
-                startRrTime = lastRrTime
-                totalRrTime = 0.0
-            }
-            totalRrTime += totalRr
-            var rr: Double
-            var t = lastRrTime
-            for (i in 0 until rrValuesCount) {
-                rr = rrValues[i]!!.toDouble()
-                t += rr
-                tValues[i] = t
-            }
-            // Keep them in this interval
-            if (tValues[0] < lastUpdateTime) {
-                lastUpdateTime = tValues[0]
-                val deltaT = lastUpdateTime
-                t += deltaT
-                for (i in 0 until rrValuesCount) {
-                    tValues[i] += deltaT
-                }
-            }
-            // Keep them from being in the future
-            if (t > time) {
-                val deltaT = t - time
-                for (i in 0 until rrValuesCount) {
-                    tValues[i] -= deltaT
-                }
-            }
-            // Add to the series
-            for (i in 0 until rrValuesCount) {
-                rr = RR_SCALE * rrValues[i]!!
-                runningMax1.add(rr)
-                rrSeries1!!.addLast(tValues[i], rr)
-                lastRrTime = tValues[i]
-            }
+            lastRrTime = timestamps.last().toDouble()
             lastUpdateTime = time
         }
     }
@@ -284,6 +250,11 @@ class HrPlotter: PlotterListener {
 //                + RR_SCALE * rr);
         if (plotHr2 || plotRr2) {
             hrRrList2.add(HrRrSessionData(time, hr, rr))
+            //            Log.d(TAG, "HRPlotter: addValues2"
+//                    + " time=" + X_AXIS_DATE_FORMAT.format(new Date(Math
+//                    .round(time)))
+//                    + " hr=" + Math.round(hr)
+//                    + " rr=" + Math.round(rr));
             if (java.lang.Double.isNaN(startTime)) startTime = time
             if (java.lang.Double.isNaN(lastTime)) {
                 lastTime = time
@@ -301,9 +272,22 @@ class HrPlotter: PlotterListener {
         }
     }
 
+//    public String getRrInfo() {
+//        double elapsed = MS_TO_SEC * (mLastRrTime - mStartRrTime);
+//        double total = MS_TO_SEC * mTotalRrTime;
+//        double ratio = total / elapsed;
+//        return "Tot=" + String.format(Locale.US, "%.2f s", elapsed)
+//                + " RR=" + String.format(Locale.US, "%.2f s", total)
+//                + " (" + String.format(Locale.US, "%.2f", ratio) + ")";
+//    }
+
     private fun updateDomainRangeBoundaries() {
         var max: Double = runningMax1.max().coerceAtLeast(runningMax2.max())
         if (java.lang.Double.isNaN(max) || max < 60) max = 60.0
+//        Log.d(TAG, this.getClass().getSimpleName() +
+//        "updateDomainRangeBoundaries: startTime="
+//                + startTime + " lastTime=" + lastTime
+//                + " max=" + max);
         if (!java.lang.Double.isNaN(lastTime) && !java.lang.Double.isNaN(startTime)) {
             if (lastTime - startTime > HR_PLOT_DOMAIN_INTERVAL) {
                 plot.setDomainBoundaries(
@@ -324,13 +308,19 @@ class HrPlotter: PlotterListener {
         }
         val upperBoundary: Number = ceil(max + 10).coerceAtMost(200.0)
         plot.setRangeBoundaries(0, upperBoundary, BoundaryMode.FIXED)
+//        RectRegion rgn= mPlot.getOuterLimits();
+//        Log.d(TAG,"OuterLimits="  + rgn.getMinX() + "," + rgn.getMaxX());
+//        mPlot.getOuterLimits().set(mStartTime, mLastTime,
+//                0, Math.ceil(max + 10));
     }
 
     /**
      * Updates the plot. Runs on the UI thread.
      */
     override fun update() {
-        parentActivity.runOnUiThread { plot.redraw() }
+//        Log.d(TAG, "HRPlotter: update: dataList sizes=" + mHrRrList1.size()
+//                + "," + mHrRrList2.size());
+        parentActivity.requestPlotRedraw(plot)
     }
 
     /**

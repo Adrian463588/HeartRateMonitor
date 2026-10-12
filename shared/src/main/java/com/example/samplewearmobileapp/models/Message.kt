@@ -6,7 +6,11 @@ data class Message(
     var sender: String,
     var content: String?,
     var code: Int,
-    var extraCode: Int?
+    var extraCode: Int?,
+    var sessionId: Long = 0L,
+    var sampleCounts: IntArray? = null,
+    var commandRevision: Long = 0L,
+    var sensorsStopped: Boolean? = null
 ) {
     /**
      * Empty/dummy constructor

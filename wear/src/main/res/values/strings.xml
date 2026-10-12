@@ -56,12 +56,10 @@
     <string name="SdkPolicyError">SDK Policy denied</string>
     <string name="HealthPlatformVersionIsOutdated">Health Platform is outdated or not installed</string>
     <string name="ConnectionError">Could not connect to Health Tracking Service. Check error log.</string>
-
-    <!-- Foreground service notification -->
-    <string name="notification_tracking">Tracking sensor data…</string>
-
-    <!-- Permission UX messages -->
-    <string name="permission_rationale">Body sensor access is required to record PPG data. Please grant the permission when prompted.</string>
-    <string name="permission_settings_guide">Background sensor access is required. Please enable "Body sensors → Allow all the time" in Settings.</string>
-
+    <string name="NoContinuousPpgSupport">Continuous PPG unavailable. Check Samsung Health Sensor service and permission.</string>
+    <string name="NoAccelerometerSupport">Accelerometer unavailable on this Watch.</string>
+    <string name="AccelerometerFailed">Accelerometer registration failed.</string>
+    <string name="UpdateBothApps">Install the current phone and Watch apps together.</string>
+    <string name="accelerometer_samples">Accelerometer: %1$d samples</string>
+    <string name="status_waiting">Waiting for samples</string>
 </resources>

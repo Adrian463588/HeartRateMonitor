@@ -22,7 +22,6 @@ class PpgGreenListener internal constructor() : Listener() {
                     }
                 } else {
                     Log.i(tag, "onDataReceived List is empty")
-                    readZeroValue()
                 }
             }
 
@@ -45,6 +44,7 @@ class PpgGreenListener internal constructor() : Listener() {
     }
 
     fun readValuesFromDataPoint(dataPoint: DataPoint) {
+
         val ppgGreenData = PpgGreenData()
         ppgGreenData.status = PpgGreenStatus.PPG_GREEN_STATUS_GOOD.code
         ppgGreenData.ppgValue = dataPoint.getValue(ValueKey.PpgGreenSet.PPG_GREEN)
@@ -53,13 +53,4 @@ class PpgGreenListener internal constructor() : Listener() {
         TrackerDataNotifier.instance?.notifyPpgGreenTrackerObservers(ppgGreenData)
     }
 
-    fun readZeroValue() {
-        val zeroPpgGreenData = PpgGreenData(
-            PpgGreenStatus.PPG_GREEN_STATUS_NONE.code,
-            0,
-            0
-        )
-        TrackerDataNotifier.instance?.notifyPpgGreenTrackerObservers(zeroPpgGreenData)
-        Log.d(tag, "Zero PPG Value notified")
-    }
 }

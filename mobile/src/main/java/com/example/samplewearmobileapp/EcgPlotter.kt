@@ -162,7 +162,7 @@ class EcgPlotter: PlotterListener {
     /**
      * Stores timestamps computed during the last addValues() batch,
      * so QrsDetector can forward them to QrsPlotter without
-     * calling nextEcgTimestamp() a second time.
+     * converting the device timestamp a second time.
      */
     private var lastBatchTimestamps = LongArray(0)
 
@@ -179,6 +179,7 @@ class EcgPlotter: PlotterListener {
     fun addValues(polarEcgData: PolarEcgData) {
         val sampleCount = polarEcgData.samples.size
         if (sampleCount == 0) return
+        TimestampHelper.anchorPolarTimestamp(polarEcgData.samples.last().timeStamp, System.currentTimeMillis())
 
         val batchTs = LongArray(sampleCount)
         var batchIdx = 0
@@ -193,9 +194,7 @@ class EcgPlotter: PlotterListener {
             seriesVisible.addLast(dataIndex, MICRO_TO_MILLI_VOLT * ecgDataSample.voltage)
             // Add the value to the all series as well
             seriesAll.addLast(dataIndex, MICRO_TO_MILLI_VOLT * ecgDataSample.voltage)
-            val normalizedTimestamp = TimestampHelper.nextEcgTimestamp(
-                ECG_SAMPLE_RATE.toDouble()
-            )
+            val normalizedTimestamp = TimestampHelper.polarNanosToAnchoredUnixMillis(ecgDataSample.timeStamp)
             seriesTimestamp.addLast(dataIndex, normalizedTimestamp)
             batchTs[batchIdx++] = normalizedTimestamp
             dataIndex++
@@ -216,7 +215,7 @@ class EcgPlotter: PlotterListener {
      * Updates the plot. Runs on the UI thread.
      */
     override fun update() {
-        parentActivity.runOnUiThread { plot.redraw() }
+        parentActivity.requestPlotRedraw(plot)
     }
 
     /**

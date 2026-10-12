@@ -19,8 +19,14 @@ data class PpgData(
     var timestamps : LongArray,
     var ppgType: PpgType,
     var windowSize: Int,
-    var size: Int = 0
+    var size: Int = 0,
+    var sessionId: Long = 0L
 ) {
+    fun isValid(): Boolean = size in 1..windowSize &&
+        ppgValues.size == windowSize && timestamps.size == windowSize &&
+        (0 until size).all { timestamps[it] > 0L &&
+            (it == 0 || timestamps[it] > timestamps[it - 1]) }
+
     constructor(windowSize: Int, ppgType: PpgType): this(
         IntArray(windowSize),
         LongArray(windowSize),
@@ -49,6 +55,7 @@ data class PpgData(
         if (!timestamps.contentEquals(other.timestamps)) return false
         if (ppgType != other.ppgType) return false
         if (windowSize != other.windowSize) return false
+        if (size != other.size || sessionId != other.sessionId) return false
 
         return true
     }
@@ -58,6 +65,8 @@ data class PpgData(
         result = 31 * result + timestamps.contentHashCode()
         result = 31 * result + ppgType.hashCode()
         result = 31 * result + windowSize
+        result = 31 * result + size
+        result = 31 * result + sessionId.hashCode()
         return result
     }
 

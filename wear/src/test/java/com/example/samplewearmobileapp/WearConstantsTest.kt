@@ -16,8 +16,8 @@ class WearConstantsTest {
     }
 
     @Test
-    fun `PPG_IR_RED_SAMPLE_RATE is 100 Hz`() {
-        assertEquals(100.0, Constants.PPG_IR_RED_SAMPLE_RATE, 1e-10)
+    fun `PPG_IR_RED_SAMPLE_RATE is 25 Hz`() {
+        assertEquals(25.0, Constants.PPG_IR_RED_SAMPLE_RATE, 1e-10)
     }
 
     @Test
@@ -31,7 +31,7 @@ class WearConstantsTest {
 
     @Test
     fun `PPG_IR_RED_BATCH_SIZE equals rate times batch tick`() {
-        // 100 Hz * 3s = 300
+        // 25 Hz * 12s = 300
         val expected = (Constants.PPG_IR_RED_SAMPLE_RATE *
                 Constants.PPG_IR_RED_BATCH_TICK_RATE * Constants.MS_TO_SEC).toInt()
         assertEquals(expected, Constants.PPG_IR_RED_BATCH_SIZE)
@@ -49,14 +49,14 @@ class WearConstantsTest {
     }
 
     @Test
-    fun `PPG_IR_RED_TICK_RATE is 10ms`() {
-        // 1000 / 100 = 10
-        assertEquals(10L, Constants.PPG_IR_RED_TICK_RATE)
+    fun `PPG_IR_RED_TICK_RATE is 40ms`() {
+        // 1000 / 25 = 40
+        assertEquals(40L, Constants.PPG_IR_RED_TICK_RATE)
     }
 
     @Test
-    fun `PPG_IR_RED_BATCH_TICK_RATE is 3 seconds`() {
-        assertEquals(3000L, Constants.PPG_IR_RED_BATCH_TICK_RATE)
+    fun `PPG_IR_RED_BATCH_TICK_RATE is 12 seconds`() {
+        assertEquals(12000L, Constants.PPG_IR_RED_BATCH_TICK_RATE)
     }
 
     @Test
