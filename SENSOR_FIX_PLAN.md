@@ -54,7 +54,7 @@ streaming depend on the optional Polar clock-setting command.
 - [x] Replace `AGENTS.md` with the feature inventory, invariants, BDD contracts,
       maintenance gates, and honest software/hardware acceptance status.
 - [x] Bump both application versions; document current/historical download links.
-- [ ] Audit scoped diff/publication files, commit, push, publish APKs and verify assets.
+- [x] Audit scoped diff/publication files, commit, push, publish APKs and verify assets.
 - [ ] Physical Galaxy Watch PPG/accelerometer and Polar ECG/HR CSV acceptance.
 
 The last item requires those devices and real session exports. Leave it open
@@ -100,4 +100,23 @@ Final source verification on 2026-10-12:
 Local machine receipts (ignored, not source artifacts):
 `build/release-acceptance.log`, `build/verification-summary.json`,
 JUnit XML reports and Android lint XML/HTML reports under module build folders.
-Publication receipt will be appended after the GitHub release and CI are verified.
+Publication verified:
+
+- Source fix commit: `efe9438ef7dbf360c987c1ef95542d3a52a52e4f`.
+- Release target: `563d6c14b0892b3ae1e60ed9af9342f7407bac9d` on `Fix-issue`;
+  subsequent commits only provision/fix the public CI environment.
+- Public shared/phone CI **passed**:
+  [run 38280205468](https://github.com/Adrian463588/HeartRateMonitor/actions/runs/38280205468).
+  Earlier SDK setup failures (`sdkmanager` missing, retired `tools` package)
+  were corrected; final job ran tests/lint/build successfully.
+- Published prerelease [v1.3.0](https://github.com/Adrian463588/HeartRateMonitor/releases/tag/v1.3.0)
+  contains exactly `mobile-debug.apk` and `wear-debug.apk`.
+  Both GitHub asset digests/byte lengths match the local artifacts above.
+- [Phone download](https://github.com/Adrian463588/HeartRateMonitor/releases/download/v1.3.0/mobile-debug.apk)
+  and [Watch download](https://github.com/Adrian463588/HeartRateMonitor/releases/download/v1.3.0/wear-debug.apk).
+- Historical `debug-2026-10-01` release and both previous APKs retained.
+- This final receipt update changes documentation only. App source remains the
+  validated/tagged release source. Source changes trigger CI; docs-only pushes
+  skip redundant application builds.
+- The remaining unchecked hardware item is intentionally **unverified**, as
+  explicitly agreed with the user; it is not a fabricated pass.
