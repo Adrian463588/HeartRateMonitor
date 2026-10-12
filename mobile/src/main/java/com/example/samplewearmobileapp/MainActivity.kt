@@ -66,7 +66,6 @@ import com.polar.sdk.api.model.PolarEcgData
 import com.polar.sdk.api.model.PolarHrData
 import com.polar.sdk.api.model.PolarSensorSetting
 import io.reactivex.rxjava3.android.schedulers.AndroidSchedulers
-import io.reactivex.rxjava3.disposables.Disposable
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -75,6 +74,7 @@ import java.io.FileWriter
 import java.io.PrintWriter
 import java.text.SimpleDateFormat
 import java.util.*
+import java.util.concurrent.TimeUnit
 import kotlin.math.roundToLong
 import kotlin.system.exitProcess
 
@@ -98,7 +98,9 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
 
 //    private lateinit var acquaintedDevices: MutableList<DeviceInfo>
     private var polarApi: PolarBleApi? = null
-    private var ecgDisposable: Disposable? = null
+    private val ecgStream = EcgStreamController()
+    private var ecgRetryJob: Job? = null
+    private var ecgStoppedAtMs = 0L
     var ecgPlotter: EcgPlotter? = null
     private var qrsDetector: QrsDetector? = null
     var qrsPlotter: QrsPlotter? = null
@@ -138,6 +140,21 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
     private var isPolarDeviceConnected = false
     private var isEcgReady = false
     private val watchSession = WatchSession()
+    private val watchControl = WatchControl()
+    private val controlHandler = Handler(Looper.getMainLooper())
+    private var desiredWatchCommand: Message? = null
+    private var watchAcknowledged = false
+    private var destroying = false
+    private val watchRetry = object : Runnable {
+        override fun run() {
+            val command = desiredWatchCommand ?: return
+            if (destroying) return
+            sendMessage(command, MessagePath.COMMAND)
+            if (command.code == ActivityCode.START_ACTIVITY || !watchAcknowledged) {
+                controlHandler.postDelayed(this, WatchControl.HEARTBEAT_MS)
+            }
+        }
+    }
     private var isRestartingPolar = false
     private var isEcgRunning = false
     private var isPpgGreenRunning = false
@@ -156,6 +173,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
     private var deviceFirmware = "NA"
     private var deviceName = "NA"
     private var deviceAddress = "NA"
+    private var polarConnectedId = ""
     private var deviceBatteryLevel = "NA"
 
     //* Date when stopped playing. Updated whenever playing started or
@@ -508,7 +526,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
                 // === START RECORDING ===
                 MobileService.startService(this, "Start recording...")
                 setLastHr()
-                startTime = Date()
+                startTime = Date(maxOf(System.currentTimeMillis(), watchSession.sessionId + 1L))
                 stopTime = Date()
                 watchSession.start(startTime!!.time)
                 deviceHrSamples.clear()
@@ -535,9 +553,9 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
                 qrsPlotter?.clear()
                 hrPlotter?.clear()
                 // Start ECG stream only if Polar device is connected
-                if (isPolarDeviceConnected && isEcgReady && ecgDisposable == null) {
-                    toggleEcgStream()
-                }
+                ecgStream.resetFailures()
+                if (!isPolarDeviceConnected && polarApi != null) connectPolarDevice()
+                startEcgStream()
                 togglePpgTracker()
                 startTimer()
                 // Update menu icons
@@ -689,26 +707,12 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
      */
     private fun pauseRecording() {
         isPaused = true
+        MobileService.startService(this, "Paused")
         stopTimer()
         // Send pause command to wear
-        if (!connectedNode.isNullOrEmpty()) {
-            val message = Message(NAME, ActivityCode.PAUSE_ACTIVITY)
-            sendMessage(message, MessagePath.COMMAND)
-        }
+        requestWatchControl(ActivityCode.PAUSE_ACTIVITY)
         // Pause ECG stream
-        if (ecgDisposable != null) {
-            toggleEcgStream()
-            isEcgRunning = false
-        }
-        // Update PPG status to Paused
-        runOnUiThread {
-            textPpgGreenStatus.text = getString(R.string.ppg_green_status,
-                getString(R.string.status_paused))
-            textPpgIrStatus.text = getString(R.string.ppg_ir_status,
-                getString(R.string.status_paused))
-            textPpgRedStatus.text = getString(R.string.ppg_red_status,
-                getString(R.string.status_paused))
-        }
+        stopEcgStream()
         Log.i(TAG, "Recording paused at ${elapsedSeconds}s")
     }
 
@@ -719,16 +723,13 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
      */
     private fun resumeRecording() {
         isPaused = false
+        MobileService.startService(this, "Recording data")
         // Send resume (start) command to wear
-        if (!connectedNode.isNullOrEmpty()) {
-            val message = Message(NAME, ActivityCode.START_ACTIVITY)
-            sendMessage(message, MessagePath.COMMAND)
-            toggleState(true)
-        }
+        requestWatchControl(ActivityCode.START_ACTIVITY)
         // Resume ECG stream
-        if (isPolarDeviceConnected && isEcgReady && ecgDisposable == null) {
-            toggleEcgStream()
-        }
+        ecgStream.resetFailures()
+        if (!isPolarDeviceConnected && polarApi != null) connectPolarDevice()
+        startEcgStream()
         startTimer()
         Log.i(TAG, "Recording resumed at ${elapsedSeconds}s")
     }
@@ -746,12 +747,9 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
         isPaused = false
         setPanBehavior()
         // Stop ECG stream
-        if (ecgDisposable != null) {
-            toggleEcgStream()
-            isEcgRunning = false
-        }
+        stopEcgStream()
         // Keep accepting this session's final Watch batches after Stop.
-        if (!connectedNode.isNullOrEmpty()) watchSession.requestStop()
+        watchSession.requestStop()
         togglePpgTracker()
         // Update menu
         menu.findItem(R.id.pause).icon = ResourcesCompat.getDrawable(
@@ -945,10 +943,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
         isEcgRunning = false
 
         // Step 2: Dispose ECG stream
-        if (ecgDisposable != null) {
-            ecgDisposable!!.dispose()
-            ecgDisposable = null
-        }
+        stopEcgStream()
 
         // Step 3: Disconnect + Shutdown old API
         if (polarApi != null) {
@@ -999,10 +994,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
         if (polarApi != null || deviceId == null || deviceId.isEmpty()) {
             return
         }
-        if (ecgDisposable != null) {
-            // Turns it off
-            toggleEcgStream()
-        }
+        stopEcgStream()
         isEcgReady = false
         isEcgRunning = false
         textEcgHr.text = ""
@@ -1037,40 +1029,55 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
         // Post a Runnable to have plots to be setup again in 1 sec
 
         // setup Polar API Callback
-        polarApi!!.setApiCallback(object: PolarBleApiCallback() {
+        val configuredApi = polarApi!!
+        val configuredId = deviceId
+        fun acceptsCallback(identifier: String) = !destroying && polarApi === configuredApi &&
+            (identifier.equals(configuredId, true) || identifier.equals(polarConnectedId, true) ||
+                identifier.equals(deviceAddress, true))
+        configuredApi.setApiCallback(object: PolarBleApiCallback() {
             override fun blePowerStateChanged(powered: Boolean) {
                 Log.d(TAG, "BluetoothStateChanged $powered")
             }
 
             override fun deviceConnected(polarDeviceInfo: PolarDeviceInfo) {
-                Log.d(TAG, "*Device connected " + polarDeviceInfo.deviceId)
-                deviceAddress = polarDeviceInfo.address
-                deviceName = polarDeviceInfo.name
-                isPolarDeviceConnected = true
                 runOnUiThread {
+                    if (destroying || polarApi !== configuredApi ||
+                        (!polarDeviceInfo.deviceId.equals(configuredId, true) &&
+                            !polarDeviceInfo.address.equals(configuredId, true))) return@runOnUiThread
+                    Log.d(TAG, "*Device connected " + polarDeviceInfo.deviceId)
+                    deviceAddress = polarDeviceInfo.address
+                    polarConnectedId = polarDeviceInfo.deviceId
+                    deviceName = polarDeviceInfo.name
+                    isPolarDeviceConnected = true
                     textEcgStatus.text = getString(R.string.ecg_status,
                         getString(R.string.status_connected))
+                    Toast.makeText(
+                        this@MainActivity,
+                        getString(R.string.connected_string, polarDeviceInfo.name),
+                        Toast.LENGTH_SHORT
+                    ).show()
+                    startEcgStream()
                 }
-//                // Set the MRU preference here after we know the name
-//                setDevicePreferences(DeviceInfo(deviceName, deviceId))
-                Toast.makeText(
-                    this@MainActivity,
-                    getString(R.string.connected_string, polarDeviceInfo.name),
-                    Toast.LENGTH_SHORT
-                ).show()
             }
 
             override fun deviceDisconnected(polarDeviceInfo: PolarDeviceInfo) {
                 Log.d(TAG, "*Device disconnected $polarDeviceInfo")
-                isPolarDeviceConnected = false
-                isEcgReady = false
-                ecgDisposable?.dispose()
-                ecgDisposable = null
-                isEcgRunning = false
-                qrsDetector = null
                 runOnUiThread {
+                    if (!acceptsCallback(polarDeviceInfo.deviceId) &&
+                        !acceptsCallback(polarDeviceInfo.address)) return@runOnUiThread
+                    isPolarDeviceConnected = false
+                    isEcgReady = false
+                    stopEcgStream()
                     textEcgStatus.text = getString(R.string.ecg_status,
                         getString(R.string.status_disconnected))
+                    if (isRecording && !isPaused && ecgStream.failures <= 2) {
+                        ecgRetryJob = lifecycleScope.launch {
+                            delay(1_000L)
+                            if (polarApi === configuredApi && isRecording && !isPaused && !isPolarDeviceConnected) {
+                                connectPolarDevice()
+                            }
+                        }
+                    }
                 }
             }
 
@@ -1079,9 +1086,9 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
                 features: Set<DeviceStreamingFeature>
             ) {
                 runOnUiThread {
-                    if (identifier != deviceId) return@runOnUiThread
+                    if (!acceptsCallback(identifier)) return@runOnUiThread
                     isEcgReady = DeviceStreamingFeature.ECG in features
-                    if (isEcgReady && isRecording && !isPaused && ecgDisposable == null) toggleEcgStream()
+                    if (isEcgReady) startEcgStream()
                     if (!isEcgReady) textEcgStatus.text = "ECG unavailable on this Polar device; HR remains supported"
                 }
             }
@@ -1096,27 +1103,23 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
                 uuid: UUID,
                 value: String
             ) {
-                if (uuid == UUID.fromString(
-                        "00002a28-0000-1000-8000" +
-                                "-00805f9b34fb"
-                    )
-                ) {
-                    deviceFirmware = value.trim { it <= ' ' }
-                    Log.d(TAG, "*Firmware: $identifier $deviceFirmware")
-                    textEcgInfo.text = getString(
-                        R.string.info_string,
-                        deviceName, deviceBatteryLevel, deviceFirmware, deviceId
-                    )
+                runOnUiThread {
+                    if (!acceptsCallback(identifier)) return@runOnUiThread
+                    if (uuid == UUID.fromString("00002a28-0000-1000-8000-00805f9b34fb")) {
+                        deviceFirmware = value.trim { it <= ' ' }
+                        textEcgInfo.text = getString(R.string.info_string,
+                            deviceName, deviceBatteryLevel, deviceFirmware, deviceId)
+                    }
                 }
             }
 
             override fun batteryLevelReceived(identifier: String, level: Int) {
-                deviceBatteryLevel = level.toString()
-                Log.d(TAG, "*Battery level $identifier $level")
-                textEcgInfo.text = getString(
-                    R.string.info_string,
-                    deviceName, deviceBatteryLevel, deviceFirmware, deviceId
-                )
+                runOnUiThread {
+                    if (!acceptsCallback(identifier)) return@runOnUiThread
+                    deviceBatteryLevel = level.toString()
+                    textEcgInfo.text = getString(R.string.info_string,
+                        deviceName, deviceBatteryLevel, deviceFirmware, deviceId)
+                }
             }
 
             override fun hrNotificationReceived(
@@ -1124,7 +1127,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
                 data: PolarHrData
             ) {
                 runOnUiThread {
-                    if (identifier != deviceId || !isRecording || isPaused || data.hr <= 0 ||
+                    if (!acceptsCallback(identifier) || !isRecording || isPaused || data.hr <= 0 ||
                         (data.contactStatusSupported && !data.contactStatus)) return@runOnUiThread
                     val timestamp = System.currentTimeMillis()
                     val rrMs = if (data.rrAvailable) data.rrsMs.toList() else emptyList()
@@ -1335,19 +1338,21 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
     override fun onDestroy() {
         super.onDestroy()
         Log.i(TAG,"Lifecycle: onDestroy()")
-        ecgDisposable?.dispose()
-        ecgDisposable = null
+        stopEcgStream()
         stopTimer()
         MobileService.stopService(this)
-        if (isRecording) {
-            if (!connectedNode.isNullOrEmpty()) {
-                sendMessage(Message(NAME, ActivityCode.STOP_ACTIVITY), MessagePath.COMMAND)
-            }
+        if (isRecording) requestWatchControl(ActivityCode.STOP_ACTIVITY)
+        desiredWatchCommand?.takeIf { it.code == ActivityCode.STOP_ACTIVITY && client.isConnected }?.let { command ->
+            val bytes = Gson().toJson(command).toByteArray(Charsets.UTF_8)
+            connectedNode?.forEach { Wearable.MessageApi.sendMessage(client, it.id, MessagePath.COMMAND, bytes) }
         }
+        destroying = true
+        controlHandler.removeCallbacks(watchRetry)
         isRecording = false
         plotUpdateScheduler.stop()
         polarApi?.shutDown()
-        client.disconnect()
+        // Give the final best-effort End time to send; the Watch lease covers lost transport.
+        controlHandler.postDelayed({ client.disconnect() }, 500L)
         // unregister receiver
         if (isBluetoothReceiverRegistered) {
             unregisterReceiver(bluetoothStateReceiver)
@@ -1663,10 +1668,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
         isEcgReady = false
         isEcgRunning = false
         if (polarApi != null) {
-            if (ecgDisposable != null) {
-                ecgDisposable!!.dispose()
-                ecgDisposable = null
-            }
+            stopEcgStream()
             try {
                 polarApi!!.disconnectFromDevice(oldDeviceId)
             } catch (ex: PolarInvalidArgument) {
@@ -2366,7 +2368,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
             TAG, this.javaClass.simpleName + " togglePpgTracker:"
                     + " connectedNode=" + connectedNode
         )
-        if (connectedNode.isNullOrEmpty()) {
+        if (ppgType != null && connectedNode.isNullOrEmpty()) {
             Toast.makeText(this, "Galaxy Watch unavailable; Polar recording can continue", Toast.LENGTH_LONG).show()
             return
         }
@@ -2395,64 +2397,92 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
             else -> {}
         }
 
-        if (isRecording) {
-            // if recording is on, turn on all ppg tracker
-            val message = Message(NAME, ActivityCode.START_ACTIVITY)
-            sendMessage(message, MessagePath.COMMAND)
-            toggleState(true)
-        } else {
-            // if not recording, turn off all ppg tracker
-            val message = Message(NAME, ActivityCode.STOP_ACTIVITY)
-            sendMessage(message, MessagePath.COMMAND)
-            toggleState(false)
+        requestWatchControl(if (isRecording) ActivityCode.START_ACTIVITY else ActivityCode.STOP_ACTIVITY)
+    }
+
+    private fun stopEcgStream() {
+        ecgRetryJob?.cancel()
+        ecgRetryJob = null
+        if (ecgStream.isActive) ecgStoppedAtMs = SystemClock.elapsedRealtime()
+        val pending = ecgStream.stop()
+        isEcgRunning = false
+        qrsDetector = null
+        if (pending) disconnectPendingEcg()
+        if (::textEcgStatus.isInitialized) textEcgStatus.text = getString(R.string.ecg_status,
+            getString(if (isPaused) R.string.status_paused else R.string.status_stopped))
+    }
+
+    private fun disconnectPendingEcg() {
+        // SDK 4.0 attaches its stop doFinally after the start handshake. Closing the
+        // connection cancels a start that might already have reached the sensor.
+        val wasConnected = isPolarDeviceConnected
+        isEcgReady = false
+        isPolarDeviceConnected = false
+        if (!wasConnected) return
+        try {
+            polarApi?.disconnectFromDevice(deviceId)
+        } catch (error: Exception) {
+            Log.w(TAG, "Pending ECG disconnect failed", error)
         }
     }
 
-    /**
-     * Toggles streaming for ECG.
-     *
-     * Turns streaming on when not running.
-     *
-     * Turns streaming off when it is currently running.
-     */
-    private fun toggleEcgStream() {
-        // Disposal must also work after a disconnect.
-        if (ecgDisposable != null) {
-            ecgDisposable?.dispose()
-            ecgDisposable = null
-            isEcgRunning = false
-            qrsDetector = null
+    private fun startEcgStream() {
+        val api = polarApi ?: return
+        if (destroying || ecgStream.isActive || !isPolarDeviceConnected || !isEcgReady ||
+            !isRecording || isPaused || ecgStream.failures > 2) return
+        // Polar sends stopMeasurement asynchronously on dispose; rapid Resume must wait.
+        val waitMs = 1_000L - (SystemClock.elapsedRealtime() - ecgStoppedAtMs)
+        if (waitMs > 0L) {
+            ecgRetryJob?.cancel()
+            ecgRetryJob = lifecycleScope.launch { delay(waitMs); startEcgStream() }
             return
         }
-        if (!isPolarDeviceConnected || !isEcgReady || !isRecording || isPaused) return
+        val identifier = deviceId
         TimestampHelper.resetEcgTimestamps()
-        ecgDisposable = polarApi!!.requestStreamSettings(deviceId, DeviceStreamingFeature.ECG)
-            .toFlowable()
-            .flatMap { setting ->
-                val selected = setting.maxSettings()
-                require(selected.settings[PolarSensorSetting.SettingType.SAMPLE_RATE] == setOf(130)) {
-                    "QRS processing requires the H10 ECG rate of 130 Hz"
+        textEcgStatus.text = getString(R.string.ecg_status, "Starting ECG")
+        ecgStream.start({
+            api.requestStreamSettings(identifier, DeviceStreamingFeature.ECG)
+                .toFlowable()
+                .flatMap { setting ->
+                    val selected = setting.maxSettings()
+                    require(selected.settings[PolarSensorSetting.SettingType.SAMPLE_RATE] == setOf(130)) {
+                        "QRS processing requires the H10 ECG rate of 130 Hz"
+                    }
+                    api.startEcgStreaming(identifier, selected)
                 }
-                polarApi!!.startEcgStreaming(deviceId, selected)
-            }
-            .observeOn(AndroidSchedulers.mainThread())
-            .subscribe({ data ->
-                if (isRecording && !isPaused && data.samples.isNotEmpty()) {
+                .timeout(10L, TimeUnit.SECONDS)
+                .observeOn(AndroidSchedulers.mainThread())
+        }, { data ->
+                if (polarApi === api && identifier == deviceId && isRecording && !isPaused && data.samples.isNotEmpty()) {
                     isEcgRunning = true
                     textEcgStatus.text = getString(R.string.ecg_status, getString(R.string.status_measuring))
                     if (qrsDetector == null) qrsDetector = QrsDetector(this)
                     qrsDetector?.process(data)
                 }
-            }, { error ->
-                ecgDisposable = null
+            }, { error, pending ->
+                if (destroying || polarApi !== api || identifier != deviceId) return@start
                 isEcgRunning = false
                 qrsDetector = null
+                ecgStoppedAtMs = SystemClock.elapsedRealtime()
+                if (pending) disconnectPendingEcg()
                 Log.e(TAG, "ECG streaming failed", error)
-                textEcgStatus.text = getString(R.string.ecg_status, "Error")
-                AppUtils.excMsg(this, "ECG streaming failed", error)
+                val retry = ecgStream.retryAfter(error)
+                if (isRecording && !isPaused && retry) {
+                    textEcgStatus.text = getString(R.string.ecg_status, "Retry ${ecgStream.failures}/2: ${error.message}")
+                    ecgRetryJob = lifecycleScope.launch {
+                        delay(1_000L)
+                        if (polarApi === api && isRecording && !isPaused) {
+                            if (!isPolarDeviceConnected) connectPolarDevice() else startEcgStream()
+                        }
+                    }
+                } else {
+                    textEcgStatus.text = getString(R.string.ecg_status, "Error: ${error.message}")
+                    AppUtils.excMsg(this, "ECG streaming failed; check H10 contact/connection, then Resume or restart Polar", error)
+                }
             }, {
-                ecgDisposable = null
                 isEcgRunning = false
+                qrsDetector = null
+                textEcgStatus.text = getString(R.string.ecg_status, "ECG stream ended")
             })
     }
 
@@ -2522,10 +2552,26 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
     }
 
     private fun onMessageArrived(messagePath: String) {
+        if (destroying) return
         val message = wearMessage ?: return
         if (message.sessionId != 0L && message.sessionId != watchSession.sessionId) return
+        if (messagePath == MessagePath.INFO && desiredWatchCommand != null) {
+            // An old acknowledgement must not overwrite a newer Pause/End request.
+            if (message.commandRevision < watchControl.revision) return
+            if (!watchControl.matches(message)) {
+                if (desiredWatchCommand?.code == ActivityCode.START_ACTIVITY &&
+                    message.code == ActivityCode.STOP_ACTIVITY && message.commandRevision >= watchControl.revision) {
+                    textPpgGreenStatus.text = "Watch session ended; End and Start a new session"
+                    textPpgIrStatus.text = textPpgGreenStatus.text
+                    textPpgRedStatus.text = textPpgGreenStatus.text
+                } else showWatchControlPending()
+                return
+            }
+            watchAcknowledged = true
+            if (message.code != ActivityCode.START_ACTIVITY) controlHandler.removeCallbacks(watchRetry)
+        }
         if (messagePath == MessagePath.INFO &&
-            message.code == ActivityCode.STOP_ACTIVITY && message.sampleCounts != null) {
+            message.code == ActivityCode.STOP_ACTIVITY && message.sensorsStopped == true && message.sampleCounts != null) {
             watchSession.reportStopped(message.sessionId, message.sampleCounts!!)
         }
         when (messagePath) {
@@ -2560,13 +2606,51 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
     }
 
     private fun sendMessage(message: Message, path: String) {
-        message.sessionId = startTime?.time ?: 0L
-        val gson = Gson()
-        connectedNode?.forEach { node ->
-            val bytes = gson.toJson(message).toByteArray()
-            Wearable.MessageApi.sendMessage(client, node.id, path, bytes)
-//            Toast.makeText(applicationContext, "Message sent!", Toast.LENGTH_LONG).show()
+        if (!client.isConnected) {
+            if (path == MessagePath.COMMAND) showWatchControlPending()
+            return
         }
+        if (path != MessagePath.COMMAND) message.sessionId = watchSession.sessionId
+        val bytes = Gson().toJson(message).toByteArray(Charsets.UTF_8)
+        Wearable.NodeApi.getConnectedNodes(client).setResultCallback { result ->
+            runOnUiThread {
+                if (destroying || !client.isConnected) return@runOnUiThread
+                connectedNode = if (result.status.isSuccess) result.nodes else emptyList()
+                // Node lookup is asynchronous; discard obsolete requests before sending.
+                if (path == MessagePath.COMMAND && message !== desiredWatchCommand) return@runOnUiThread
+                if (connectedNode.isNullOrEmpty() && path == MessagePath.COMMAND && !watchAcknowledged) showWatchControlPending()
+                connectedNode?.forEach { node ->
+                    Wearable.MessageApi.sendMessage(client, node.id, path, bytes).setResultCallback { sent ->
+                        if (!sent.status.isSuccess) Log.w(TAG, "Watch command delivery failed: ${sent.status.statusCode}")
+                    }
+                }
+            }
+        }
+    }
+
+    private fun requestWatchControl(code: Int) {
+        val id = watchSession.sessionId
+        if (!watchControl.accept(id, watchControl.revision + 1L, code, SystemClock.elapsedRealtime())) return
+        desiredWatchCommand = Message(NAME, "Session control", code, null, id,
+            commandRevision = watchControl.revision)
+        watchAcknowledged = false
+        showWatchControlPending()
+        controlHandler.removeCallbacks(watchRetry)
+        watchRetry.run()
+    }
+
+    private fun showWatchControlPending() {
+        if (destroying) return
+        watchAcknowledged = false
+        val action = when (desiredWatchCommand?.code) {
+            ActivityCode.PAUSE_ACTIVITY -> "Pause"
+            ActivityCode.STOP_ACTIVITY -> "End"
+            else -> "Start/Resume"
+        }
+        val status = "Watch $action awaiting confirmation; reconnect both apps if offline"
+        textPpgGreenStatus.text = status
+        textPpgIrStatus.text = status
+        textPpgRedStatus.text = status
     }
 
     private fun setMessageCode(message: Message, forceCode: Int = 99) {
@@ -2729,7 +2813,7 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
         msg.append("Polar API Connected: ").append(polarApi != null).append("\n")
         msg.append("Polar Device Connected: ").append(isPolarDeviceConnected).append("\n")
         msg.append("Recording: ").append(isRecording).append("\n")
-        msg.append("Receiving ECG: ").append(ecgDisposable != null)
+        msg.append("Receiving ECG: ").append(ecgStream.isActive)
             .append("\n")
         if (ecgPlotter != null && ecgPlotter!!.getVisibleSeries() != null && ecgPlotter!!.getVisibleSeries()
                 .getyVals() != null

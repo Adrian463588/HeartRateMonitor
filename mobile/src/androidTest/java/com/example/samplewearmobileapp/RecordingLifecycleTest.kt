@@ -67,13 +67,22 @@ class RecordingLifecycleTest {
             }
             InstrumentationRegistry.getInstrumentation().waitForIdleSync()
             assertTrue(MobileService.isServiceRunning())
+            assertTrue(MobileService.isRecordingCpuAwake())
             scenario.onActivity { activity ->
                 activity.onCreateOptionsMenu(menu)
                 assertEquals("Pause", menu.findItem(R.id.pause).title.toString())
                 activity.onOptionsItemSelected(menu.findItem(R.id.pause))
+            }
+            InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+            assertFalse("Pause must release the recording wake lock", MobileService.isRecordingCpuAwake())
+            scenario.onActivity { activity ->
                 activity.onCreateOptionsMenu(menu)
                 assertEquals("Resume", menu.findItem(R.id.pause).title.toString())
                 activity.onOptionsItemSelected(menu.findItem(R.id.pause))
+            }
+            InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+            assertTrue("Resume must restore heartbeat availability", MobileService.isRecordingCpuAwake())
+            scenario.onActivity { activity ->
                 activity.onCreateOptionsMenu(menu)
                 assertEquals("Pause", menu.findItem(R.id.pause).title.toString())
                 activity.onOptionsItemSelected(menu.findItem(R.id.stop_recording))
@@ -82,6 +91,7 @@ class RecordingLifecycleTest {
             }
             InstrumentationRegistry.getInstrumentation().waitForIdleSync()
             assertFalse(MobileService.isServiceRunning())
+            assertFalse(MobileService.isRecordingCpuAwake())
         }
     }
 }

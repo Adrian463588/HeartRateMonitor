@@ -8,7 +8,9 @@ data class Message(
     var code: Int,
     var extraCode: Int?,
     var sessionId: Long = 0L,
-    var sampleCounts: IntArray? = null
+    var sampleCounts: IntArray? = null,
+    var commandRevision: Long = 0L,
+    var sensorsStopped: Boolean? = null
 ) {
     /**
      * Empty/dummy constructor

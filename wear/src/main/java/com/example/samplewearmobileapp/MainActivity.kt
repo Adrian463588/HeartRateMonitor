@@ -26,6 +26,7 @@ import com.example.samplewearmobileapp.models.AccelerometerData
 import com.example.samplewearmobileapp.models.Message
 import com.example.samplewearmobileapp.models.PpgData
 import com.example.samplewearmobileapp.models.PpgType
+import com.example.samplewearmobileapp.models.WatchControl
 import com.example.samplewearmobileapp.trackers.PpgContinuousListener
 import com.example.samplewearmobileapp.utils.TimestampHelper
 import com.google.android.gms.common.api.GoogleApiClient
@@ -47,6 +48,15 @@ class MainActivity : FragmentActivity(), GoogleApiClient.ConnectionCallbacks,
     private var sessionId = 0L
     private var batchNumber = 0L
     private var destroying = false
+    private val control = WatchControl()
+    private val safetyTimeout = Runnable {
+        if (!destroying && currentState == ActivityCode.START_ACTIVITY &&
+            control.isExpired(SystemClock.elapsedRealtime())) {
+            stopSession(ActivityCode.PAUSE_ACTIVITY)
+            binding.statusMsg.text = "Controller unavailable; sensors paused"
+        }
+    }
+    private val releaseRetry = Runnable { stopSession(currentState) }
     private val recordings = PpgType.values().associateWith { PpgRecording(it) }
     private val counts = PpgType.values().associateWith { 0 }.toMutableMap()
     private val ppgListener = PpgContinuousListener(::recordPpg, ::showPpgError)
@@ -54,6 +64,7 @@ class MainActivity : FragmentActivity(), GoogleApiClient.ConnectionCallbacks,
     private var sensorManager: SensorManager? = null
     private var accelerometer: Sensor? = null
     private var isAccTracking = false
+    private var isAccRegistered = false
     private var accCount = 0
     private var accUnixAnchorMs = 0L
     private var accElapsedAnchorNanos = 0L
@@ -131,6 +142,10 @@ class MainActivity : FragmentActivity(), GoogleApiClient.ConnectionCallbacks,
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        getPreferences(MODE_PRIVATE).let { saved ->
+            control.accept(saved.getLong("session", 0L), saved.getLong("revision", 0L),
+                saved.getInt("state", ActivityCode.DO_NOTHING), SystemClock.elapsedRealtime())
+        }
         AmbientModeSupport.attach(this)
         sensorManager = getSystemService(SensorManager::class.java)
         accelerometer = sensorManager?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
@@ -172,22 +187,25 @@ class MainActivity : FragmentActivity(), GoogleApiClient.ConnectionCallbacks,
 
     private fun onMessageArrived(path: String, message: Message) {
         when (path) {
-            MessagePath.COMMAND -> when (message.code) {
-                ActivityCode.START_ACTIVITY -> startSession(message.sessionId)
-                ActivityCode.PAUSE_ACTIVITY, ActivityCode.STOP_ACTIVITY -> {
-                    if (message.sessionId != sessionId) return
-                    stopTrackers()
-                    flushRemainingData()
-                    currentState = message.code
-                    binding.statusMsg.setText(if (currentState == ActivityCode.PAUSE_ACTIVITY) {
-                        R.string.status_paused
-                    } else R.string.status_stopped)
-                    updatePpgStatuses()
-                    updateAccelerometerStatus()
+            MessagePath.COMMAND -> {
+                if (!control.accept(message.sessionId, message.commandRevision, message.code,
+                        SystemClock.elapsedRealtime())) {
                     sendState()
-                    if (currentState == ActivityCode.PAUSE_ACTIVITY) {
-                        MainService.startService(this, "Paused")
-                    } else if (uploads.isEmpty()) MainService.stopService(this)
+                    return
+                }
+                persistControl()
+                mainHandler.removeCallbacks(safetyTimeout)
+                if (message.code == ActivityCode.START_ACTIVITY) {
+                    startSession(message.sessionId)
+                    mainHandler.postDelayed(safetyTimeout, WatchControl.TIMEOUT_MS)
+                } else {
+                    // End must also be acknowledged when its Start was lost in transit.
+                    if (message.sessionId != sessionId) {
+                        stopSession(message.code)
+                        if (ppgListener.isRegistered() || isAccRegistered) return
+                        resetSession(message.sessionId)
+                    }
+                    stopSession(message.code)
                 }
             }
             MessagePath.REQUEST -> sendState()
@@ -218,18 +236,23 @@ class MainActivity : FragmentActivity(), GoogleApiClient.ConnectionCallbacks,
             Toast.makeText(this, R.string.UpdateBothApps, Toast.LENGTH_LONG).show()
             return
         }
-        if (id == sessionId && currentState == ActivityCode.START_ACTIVITY) return
+        if (id == sessionId && currentState == ActivityCode.START_ACTIVITY) {
+            sendState()
+            return
+        }
+        mainHandler.removeCallbacks(releaseRetry)
         if (id != sessionId) {
-            stopTrackers()
+            if (!stopTrackers()) {
+                stopSession(ActivityCode.PAUSE_ACTIVITY)
+                return
+            }
             flushRemainingData()
-            recordings.values.forEach { it.clear() }
-            counts.keys.forEach { counts[it] = 0 }
-            accRecording.clear()
-            accCount = 0
-            sessionId = id
-            batchNumber = 0L
-            ppgListener.channels.clear()
-            ppgListener.channels.addAll(PpgType.values())
+            resetSession(id)
+        } else if (ppgListener.isRegistered() || isAccRegistered) {
+            if (!stopTrackers()) {
+                stopSession(ActivityCode.PAUSE_ACTIVITY)
+                return
+            }
         }
         try {
             MainService.startService(this, "Recording sensors")
@@ -248,6 +271,40 @@ class MainActivity : FragmentActivity(), GoogleApiClient.ConnectionCallbacks,
         sendState()
     }
 
+    private fun resetSession(id: Long) {
+        recordings.values.forEach { it.clear() }
+        counts.keys.forEach { counts[it] = 0 }
+        accRecording.clear()
+        accCount = 0
+        sessionId = id
+        batchNumber = 0L
+        ppgListener.channels.clear()
+        ppgListener.channels.addAll(PpgType.values())
+    }
+
+    private fun persistControl() {
+        getPreferences(MODE_PRIVATE).edit().putLong("session", control.sessionId)
+            .putLong("revision", control.revision).putInt("state", control.code).apply()
+    }
+
+    private fun stopSession(state: Int) {
+        mainHandler.removeCallbacks(safetyTimeout)
+        mainHandler.removeCallbacks(releaseRetry)
+        currentState = state
+        val released = stopTrackers()
+        flushRemainingData()
+        binding.statusMsg.setText(if (!released) R.string.status_failed
+            else if (state == ActivityCode.PAUSE_ACTIVITY) R.string.status_paused else R.string.status_stopped)
+        updatePpgStatuses()
+        updateAccelerometerStatus()
+        sendState()
+        // Release the wake lock immediately, including while final uploads are pending.
+        if (state == ActivityCode.PAUSE_ACTIVITY || uploads.isNotEmpty() || !released) {
+            MainService.startService(this, "Paused")
+        } else MainService.stopService(this)
+        if (!released) mainHandler.postDelayed(releaseRetry, 1_000L)
+    }
+
     private fun startAccelerometerTracker() {
         if (isAccTracking) return
         accUnixAnchorMs = System.currentTimeMillis()
@@ -260,6 +317,7 @@ class MainActivity : FragmentActivity(), GoogleApiClient.ConnectionCallbacks,
             Log.e(TAG, "Accelerometer registration failed", error)
             false
         }
+        isAccRegistered = isAccTracking
         updateAccelerometerStatus()
     }
 
@@ -269,10 +327,16 @@ class MainActivity : FragmentActivity(), GoogleApiClient.ConnectionCallbacks,
         }
     }
 
-    private fun stopTrackers() {
-        ppgListener.stopTracker()
+    private fun stopTrackers(): Boolean {
+        val ppgReleased = ppgListener.stopTracker()
         isAccTracking = false
-        sensorManager?.unregisterListener(accelerometerListener)
+        try {
+            sensorManager?.unregisterListener(accelerometerListener)
+            isAccRegistered = false
+        } catch (error: RuntimeException) {
+            Log.e(TAG, "Accelerometer release failed; retained for retry", error)
+        }
+        return ppgReleased && !isAccRegistered
     }
 
     private fun recordPpg(type: PpgType, value: Int, timestamp: Long) {
@@ -335,7 +399,8 @@ class MainActivity : FragmentActivity(), GoogleApiClient.ConnectionCallbacks,
     private fun drainUploads() {
         if (uploadInFlight || !client.isConnected) return
         if (uploads.isEmpty()) {
-            if (currentState == ActivityCode.STOP_ACTIVITY || currentState == ActivityCode.DO_NOTHING) {
+            if ((currentState == ActivityCode.STOP_ACTIVITY || currentState == ActivityCode.DO_NOTHING) &&
+                !ppgListener.isRegistered() && !isAccRegistered) {
                 MainService.stopService(this)
             }
             if (destroying) client.disconnect()
@@ -361,7 +426,8 @@ class MainActivity : FragmentActivity(), GoogleApiClient.ConnectionCallbacks,
         val mask = if (ppgListener.isTracking()) ppgListener.channels.sumOf { it.mask } else 0
         val state = Message(Entity.WEAR_APP, "Watch sensor state", currentState, mask, sessionId,
             intArrayOf(counts.getValue(PpgType.PPG_GREEN), counts.getValue(PpgType.PPG_IR),
-                counts.getValue(PpgType.PPG_RED), accCount))
+                counts.getValue(PpgType.PPG_RED), accCount), control.revision,
+            !ppgListener.isRegistered() && !isAccRegistered)
         val bytes = gson.toJson(state).toByteArray(Charsets.UTF_8)
         Wearable.NodeApi.getConnectedNodes(client).setResultCallback { nodes ->
             for (node in nodes.nodes) Wearable.MessageApi.sendMessage(client, node.id, MessagePath.INFO, bytes)
@@ -406,11 +472,12 @@ class MainActivity : FragmentActivity(), GoogleApiClient.ConnectionCallbacks,
 
     override fun onDestroy() {
         destroying = true
-        stopTrackers()
-        flushRemainingData()
-        currentState = ActivityCode.STOP_ACTIVITY
-        sendState()
+        control.accept(control.sessionId, control.revision + 1L, ActivityCode.STOP_ACTIVITY,
+            SystemClock.elapsedRealtime())
+        persistControl()
+        stopSession(ActivityCode.STOP_ACTIVITY)
         connectionManager.disconnect()
+        mainHandler.removeCallbacks(releaseRetry)
         Wearable.MessageApi.removeListener(client, messageListener)
         drainUploads()
         if (uploads.isEmpty()) MainService.stopService(this)

@@ -1,8 +1,10 @@
 # Watch/Polar acquisition specification
 
-Status: implemented software contract for **1.3.0**; physical sensor acceptance
+Status: software contract for **1.3.1**; physical sensor acceptance
 pending. Feature inventory: [AGENTS.md](../../AGENTS.md).
-Plan and verification evidence: [SENSOR_FIX_PLAN.md](../../SENSOR_FIX_PLAN.md).
+Current control/recovery plan: [SESSION_CONTROL_FIX_PLAN.md](../../SESSION_CONTROL_FIX_PLAN.md).
+Historic acquisition evidence: [SENSOR_FIX_PLAN.md](../../SENSOR_FIX_PLAN.md).
+Additional lifecycle requirements: [session control and Polar recovery](02-session-control-and-polar-recovery.md).
 
 ## Requirements
 

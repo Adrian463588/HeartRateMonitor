@@ -5,11 +5,11 @@ continuous Green/IR/Red PPG, and supported Polar ECG/HR/RR data with SAF CSV exp
 
 ## Download and version history
 
-Install **both matching 1.3.0 apps**; the transport now identifies sessions and
-individual batches. These are debug APKs, not Google Play builds.
+Install **both matching 1.3.1 apps**; ordered controls and safety timeout require both updated apps. These are debug APKs, not Google Play builds.
 
 | Release | Phone APK | Watch APK | Notes |
 | --- | --- | --- | --- |
+| [1.3.1 — 2026-10-13](https://github.com/Adrian463588/HeartRateMonitor/releases/tag/v1.3.1) | [mobile-debug.apk](https://github.com/Adrian463588/HeartRateMonitor/releases/download/v1.3.1/mobile-debug.apk) | [wear-debug.apk](https://github.com/Adrian463588/HeartRateMonitor/releases/download/v1.3.1/wear-debug.apk) | Latest: confirmed session controls, Watch timeout, Polar startup/recovery fixes; hardware unverified. |
 | [1.3.0 — 2026-10-12](https://github.com/Adrian463588/HeartRateMonitor/releases/tag/v1.3.0) | [Download phone](https://github.com/Adrian463588/HeartRateMonitor/releases/download/v1.3.0/mobile-debug.apk) | [Download Watch](https://github.com/Adrian463588/HeartRateMonitor/releases/download/v1.3.0/wear-debug.apk) | Both versionCode 4. Acquisition/lifecycle, late flush, duplicate/session isolation, Polar clocks, HR/RR CSV and frame redraw repairs. |
 | [Historical debug — 2026-10-01](https://github.com/Adrian463588/HeartRateMonitor/releases/tag/debug-2026-10-01) | [Previous phone APK](https://github.com/Adrian463588/HeartRateMonitor/releases/download/debug-2026-10-01/mobile-debug.apk) | [Previous Watch APK](https://github.com/Adrian463588/HeartRateMonitor/releases/download/debug-2026-10-01/wear-debug.apk) | Existing release preserved. Legacy transport/rates differ from 1.3.0. |
 
@@ -50,6 +50,14 @@ unavailable, and empty channels contain no synthetic rows.
 6. Stop, then Save All or select ECG, PPG, acceleration, or Polar HR/RR export.
    Pending final Watch batches remain ingestible. If you select **Save partial**,
    Watch CSV metadata records `watch_transfer_complete=false`.
+7. Wait for Watch Pause/End confirmation. Offline requests stay pending; an
+   unreachable controller makes updated Watch software pause after 15 seconds.
+   Active sessions send a heartbeat every 3 seconds. After Watch Activity
+   recreation, End and start a new session; old-session Start is rejected.
+8. Polar pending startup is canceled by disconnecting. Resume reconnects; ECG
+   requires readiness, waits for asynchronous stop, and retries transient errors
+   at most twice. Final/unsupported errors require explicit Resume or restart.
+   HR notifications while paused/stopped are ignored, not recorded.
 
 CSV timestamps use Unix milliseconds. Acceleration metadata preserves the
 nominal/requested rate; actual timestamps determine achieved rate. Export
@@ -79,7 +87,7 @@ Outputs: `mobile/build/outputs/apk/debug/mobile-debug.apk` and
 Public CI checks shared/phone tests, phone lint and phone build. Full Wear
 checks require the local private SDK and are required before each release.
 
-Software checks and warning counts: [repair plan/evidence](SENSOR_FIX_PLAN.md).
+Software checks and warning counts: [session repair plan/evidence](SESSION_CONTROL_FIX_PLAN.md).
 **Galaxy Watch and Polar physical sensor/session acceptance is unverified for
 this release**: those devices were unavailable during this repair. Phone
 instrumentation verifies controls/service/frame scheduling, not sensor accuracy.

@@ -2,17 +2,17 @@ package com.example.samplewearmobileapp.trackers
 
 import android.os.Handler
 import android.util.Log
+import com.example.samplewearmobileapp.models.TrackerLifecycle
 import com.samsung.android.service.health.tracking.HealthTracker
 import com.samsung.android.service.health.tracking.HealthTracker.TrackerEventListener
+import com.samsung.android.service.health.tracking.data.DataPoint
 
 open class Listener {
     private val tag = "Listener Base Class"
 
     private lateinit var handler: Handler
     private lateinit var healthTracker: HealthTracker
-    private var isHandlerRunning = false
-    private var isTracking = false
-    private var generation = 0L
+    private val lifecycle = TrackerLifecycle()
 
     private lateinit var trackerEventListener: TrackerEventListener
 
@@ -25,8 +25,7 @@ open class Listener {
     }
 
     fun setHandlerRunning(handlerRunning: Boolean) {
-        isHandlerRunning = handlerRunning
-        if (!handlerRunning) isTracking = false
+        if (!handlerRunning) stopTracker()
     }
 
     fun setTrackerEventListener(tracker: TrackerEventListener) {
@@ -36,50 +35,57 @@ open class Listener {
     fun startTracker(): Boolean {
         if (!::healthTracker.isInitialized || !::handler.isInitialized ||
             !::trackerEventListener.isInitialized) return false
-        if (!isTracking) {
-            generation++
-            isTracking = true
-            handler.post {
-                if (isTracking) {
-                    try {
-                        healthTracker.setEventListener(trackerEventListener)
-                        setHandlerRunning(true)
-                    } catch (error: RuntimeException) {
-                        setHandlerRunning(false)
-                        Log.e(tag, "Tracker registration failed", error)
-                        onRegistrationFailed(error)
+        return try {
+            lifecycle.start {
+                val registration = lifecycle.generation
+                // Bind callbacks to their registration, including callbacks delivered after Resume.
+                healthTracker.setEventListener(object : TrackerEventListener {
+                    override fun onDataReceived(points: List<DataPoint>) {
+                        val copy = points.toList()
+                        deliver(registration) { trackerEventListener.onDataReceived(copy) }
                     }
-                }
+                    override fun onFlushCompleted() {
+                        deliver(registration) { trackerEventListener.onFlushCompleted() }
+                    }
+                    override fun onError(error: HealthTracker.TrackerError) {
+                        deliver(registration) { trackerEventListener.onError(error) }
+                    }
+                })
             }
+        } catch (error: RuntimeException) {
+            stopTracker()
+            Log.e(tag, "Tracker registration failed", error)
+            onRegistrationFailed(error)
+            false
         }
-        return true
     }
 
-    fun stopTracker() {
-        generation++
-        isTracking = false
+    fun stopTracker(): Boolean {
         if (::handler.isInitialized) handler.removeCallbacksAndMessages(null)
-        if (isHandlerRunning) {
-            try {
-                healthTracker.unsetEventListener()
-            } catch (error: RuntimeException) {
-                Log.w(tag, "Tracker already unavailable", error)
-            }
-            setHandlerRunning(false)
+        return try {
+            lifecycle.stop { healthTracker.unsetEventListener() }
+        } catch (error: RuntimeException) {
+            Log.w(tag, "Tracker release failed; Stop must retry", error)
+            false
         }
     }
 
     protected fun postTrackerData(block: () -> Unit) {
         if (!::handler.isInitialized) return
-        val callbackGeneration = generation
+        deliver(lifecycle.generation, block)
+    }
+
+    private fun deliver(callbackGeneration: Long, block: () -> Unit) {
         handler.post {
-            if (isTracking && generation == callbackGeneration) block()
+            if (lifecycle.accepts(callbackGeneration)) block()
         }
     }
 
     protected open fun onRegistrationFailed(error: RuntimeException) = Unit
 
     fun isTracking(): Boolean {
-        return isTracking
+        return lifecycle.requested
     }
+
+    fun isRegistered(): Boolean = lifecycle.registered
 }
