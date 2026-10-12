@@ -106,12 +106,17 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
     private var ppgGreenValueNumber = 0
     private var ppgIrValueNumber = 0
     private var ppgRedValueNumber = 0
+    private var accValueNumber = 0
+    private val accXList = mutableListOf<Float>()
+    private val accYList = mutableListOf<Float>()
+    private val accZList = mutableListOf<Float>()
+    private val accTimestampList = mutableListOf<Long>()
 
     /**
      * Whether to save as CSV, Plot, or both.
      */
     private enum class SaveType {
-        ECG_DATA, PPG_GREEN_DATA, PPG_IR_DATA, PPG_RED_DATA, ALL_PPG, ALL
+        ECG_DATA, PPG_GREEN_DATA, PPG_IR_DATA, PPG_RED_DATA, ACCELEROMETER_DATA, ALL_PPG, ALL
 //        , PLOT, BOTH
 //        , DEVICE_HR, QRS_HR, ALL
     }
@@ -501,10 +506,15 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
                 setPanBehavior()
                 updateTimerDisplay()
                 textEcgTime.text = getString(R.string.elapsed_time, 0.0)
-                // Clear the plots
+                // Clear the plots and accelerometer buffers
                 ppgGreenValueNumber = 0
                 ppgIrValueNumber = 0
                 ppgRedValueNumber = 0
+                accValueNumber = 0
+                accXList.clear()
+                accYList.clear()
+                accZList.clear()
+                accTimestampList.clear()
                 ppgGreenPlotter?.clear()
                 ppgIrPlotter?.clear()
                 ppgRedPlotter?.clear()
@@ -569,6 +579,10 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
         }
         else if (id == R.id.save_ppg_red_data) {
             saveDataWithName(SaveType.PPG_RED_DATA)
+            return true
+        }
+        else if (id == R.id.save_accelerometer_data) {
+            saveDataWithName(SaveType.ACCELEROMETER_DATA)
             return true
         }
 //        else if (id == R.id.save_plot) {
@@ -1024,8 +1038,10 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
                     Log.d(TAG, "Streaming feature is ready for 1: $feature")
                     when (feature) {
                         DeviceStreamingFeature.ECG -> {
-
-//                            toggleEcgStream()
+                            if (isRecording && !isPaused && ecgDisposable == null) {
+                                toggleEcgStream()
+                                isEcgRunning = true
+                            }
                         }
 //                        DeviceStreamingFeature.PPI,
 //                        DeviceStreamingFeature.ACC,
@@ -1409,6 +1425,11 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
         ppgGreenValueNumber = 0
         ppgIrValueNumber = 0
         ppgRedValueNumber = 0
+        accValueNumber = 0
+        accXList.clear()
+        accYList.clear()
+        accZList.clear()
+        accTimestampList.clear()
         // Force layout recalculation so gridRect is available for setupPlot
         ppgGreenPlot.invalidate()
         ppgIrPlot.invalidate()
@@ -1675,11 +1696,13 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
                     savePpgData(input.text.toString(), ppgGreenPlotter!!)
                     savePpgData(input.text.toString(), ppgIrPlotter!!)
                     savePpgData(input.text.toString(), ppgRedPlotter!!)
+                    saveAccelerometerData(input.text.toString())
                 }
                 SaveType.ECG_DATA -> saveEcgData(input.text.toString())
                 SaveType.PPG_GREEN_DATA -> savePpgData(input.text.toString(), ppgGreenPlotter!!)
                 SaveType.PPG_IR_DATA -> savePpgData(input.text.toString(), ppgIrPlotter!!)
                 SaveType.PPG_RED_DATA -> savePpgData(input.text.toString(), ppgRedPlotter!!)
+                SaveType.ACCELEROMETER_DATA -> saveAccelerometerData(input.text.toString())
                 SaveType.ALL_PPG -> {
                     savePpgData(input.text.toString(), ppgGreenPlotter!!)
                     savePpgData(input.text.toString(), ppgIrPlotter!!)
@@ -1986,6 +2009,81 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
             pfd.close()
         } catch (ex: java.lang.Exception) {
             msg = "Error writing CSV file"
+            Log.e(TAG, msg)
+            Log.e(TAG, Log.getStackTraceString(ex))
+            AppUtils.excMsg(this, msg, ex)
+        }
+    }
+
+    /**
+     * Finishes the saveData after getting the name.
+     * Only saves the Accelerometer recording data.
+     * @param filename The name.
+     */
+    private fun saveAccelerometerData(filename: String) {
+        val prefs = getPreferences(MODE_PRIVATE)
+        val treeUriStr = prefs.getString(PREF_TREE_URI, null)
+        if (treeUriStr == null) {
+            AppUtils.errMsg(this, "There is no data directory set")
+            return
+        }
+        val duration = elapsedSeconds.toDouble()
+        val format = "yyyy-MM-dd_HH-mm"
+        val df = SimpleDateFormat(format, Locale.US)
+        val fileName = filename + "-Accelerometer-" + df.format(stopTime!!) + ".csv"
+        try {
+            val treeUri = Uri.parse(treeUriStr)
+            val treeDocumentId = DocumentsContract.getTreeDocumentId(treeUri)
+            val docTreeUri = DocumentsContract.buildDocumentUriUsingTree(
+                treeUri,
+                treeDocumentId
+            )
+            val resolver = this.contentResolver
+            val docUri = DocumentsContract.createDocument(
+                resolver, docTreeUri,
+                "text/csv", fileName
+            )
+            val pfd = contentResolver.openFileDescriptor(docUri!!, "w")
+            FileWriter(pfd!!.fileDescriptor).use { writer ->
+                PrintWriter(writer).use { out ->
+                    val sampleCount = accXList.size
+                    val durationString = java.lang.String.format(
+                        Locale.US, "%.1f sec",
+                        duration
+                    )
+                    out.write(
+                        ("application=" + "SamplingApp Version: "
+                                + AppUtils.getVersion(this)) + "\n"
+                    )
+                    out.write("datatype=Accelerometer\n")
+                    out.write("stoptime=${stopTime.toString()}\n")
+                    out.write("duration=$durationString\n")
+                    out.write("samplescount=$sampleCount\n")
+                    out.write("samplingrate=25.0\n")
+                    out.write("x,y,z,timestamp,formatted_time\n")
+
+                    // Write samples
+                    for (i in 0 until sampleCount) {
+                        out.write(
+                            String.format(
+                                Locale.US, "%.4f,%.4f,%.4f,%d,%s\n",
+                                accXList[i],
+                                accYList[i],
+                                accZList[i],
+                                accTimestampList[i],
+                                timestampFormat.format(Date(accTimestampList[i]))
+                            )
+                        )
+                    }
+                    out.flush()
+                    val msg = "Wrote " + docUri.lastPathSegment
+                    Log.d(TAG, msg)
+                    AppUtils.infoMsg(this, msg)
+                }
+            }
+            pfd.close()
+        } catch (ex: java.lang.Exception) {
+            val msg = "Error writing Accelerometer CSV file"
             Log.e(TAG, msg)
             Log.e(TAG, Log.getStackTraceString(ex))
             AppUtils.excMsg(this, msg, ex)
@@ -2389,6 +2487,20 @@ class MainActivity : AppCompatActivity(), GoogleApiClient.ConnectionCallbacks,
                     textPpgRedStatus.text = getString(R.string.ppg_red_status,
                         getString(R.string.status_measuring))
                 }
+            }
+            MessagePath.DATA_ACCELEROMETER -> {
+                val accData = Gson().fromJson(
+                    String(dataEvent.dataItem.data),
+                    AccelerometerData::class.java
+                )
+                Log.d(TAG, "Accelerometer data batch received: count=${accData.size}")
+                for (i in 0 until accData.size) {
+                    accXList.add(accData.xValues[i])
+                    accYList.add(accData.yValues[i])
+                    accZList.add(accData.zValues[i])
+                    accTimestampList.add(accData.timestamps[i])
+                }
+                accValueNumber += accData.size
             }
         }
     }

@@ -15,12 +15,18 @@ import android.widget.Toast
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import androidx.wear.ambient.AmbientModeSupport
+import com.example.samplewearmobileapp.Constants.ACCELEROMETER_BATCH_SIZE
 import com.example.samplewearmobileapp.Constants.PPG_GREEN_BATCH_SIZE
 import com.example.samplewearmobileapp.Constants.PPG_GREEN_SAMPLE_RATE
 import com.example.samplewearmobileapp.Constants.PPG_IR_RED_BATCH_SIZE
 import com.example.samplewearmobileapp.Constants.PPG_IR_RED_BATCH_TICK_RATE
 import com.example.samplewearmobileapp.Constants.PPG_IR_RED_SAMPLE_RATE
+import com.example.samplewearmobileapp.models.AccelerometerData
 import com.example.samplewearmobileapp.constants.codes.ActivityCode
 import com.example.samplewearmobileapp.constants.Entity
 import com.example.samplewearmobileapp.constants.MessagePath
@@ -107,6 +113,68 @@ class MainActivity :
     private var ppgGreenRecording = PpgRecording(PpgType.PPG_GREEN)
     private var ppgIrRecording = PpgRecording(PpgType.PPG_IR)
     private var ppgRedRecording = PpgRecording(PpgType.PPG_RED)
+    private var sensorManager: SensorManager? = null
+    private var accelerometerSensor: Sensor? = null
+    private var isAccTracking = false
+    private var currentAccDataNumber = 0
+    private var accRecording = AccelerometerRecording()
+
+    private val accelerometerListener = object : SensorEventListener {
+        override fun onSensorChanged(event: SensorEvent?) {
+            if (event?.sensor?.type == Sensor.TYPE_ACCELEROMETER) {
+                val x = event.values[0]
+                val y = event.values[1]
+                val z = event.values[2]
+                val timestamp = System.currentTimeMillis()
+                currentAccDataNumber++
+                accRecording.add(x, y, z, timestamp)
+                if (accRecording.getSize() >= ACCELEROMETER_BATCH_SIZE) {
+                    sendAccelerometerData(accRecording, ACCELEROMETER_BATCH_SIZE)
+                    accRecording.clearFromStartUntil(ACCELEROMETER_BATCH_SIZE)
+                }
+            }
+        }
+
+        override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+    }
+
+    private fun startAccelerometerTracker() {
+        if (!isAccTracking && accelerometerSensor != null) {
+            sensorManager?.registerListener(
+                accelerometerListener,
+                accelerometerSensor,
+                40000 // 40ms = 25Hz sample rate
+            )
+            isAccTracking = true
+            Log.i(tag, "Accelerometer tracker started")
+        }
+    }
+
+    private fun stopAccelerometerTracker() {
+        if (isAccTracking) {
+            sensorManager?.unregisterListener(accelerometerListener)
+            isAccTracking = false
+            Log.i(tag, "Accelerometer tracker stopped")
+        }
+    }
+
+    private fun sendAccelerometerData(recording: AccelerometerRecording, actualSize: Int? = null) {
+        val windowSize = actualSize ?: ACCELEROMETER_BATCH_SIZE
+        val accData = AccelerometerData(windowSize)
+        for (i in 0 until windowSize) {
+            accData.xValues[i] = recording.xValues[i]
+            accData.yValues[i] = recording.yValues[i]
+            accData.zValues[i] = recording.zValues[i]
+            accData.timestamps[i] = recording.timestamps[i]
+            accData.size++
+        }
+        val bytes = Gson().toJson(accData).toByteArray()
+        Wearable.DataApi.putDataItem(
+            client,
+            PutDataRequest.create(MessagePath.DATA_ACCELEROMETER).setData(bytes).setUrgent()
+        )
+        Log.i(tag, "Accelerometer Data sent via DataApi! points: $windowSize")
+    }
 
     // unused
     private val onDemandCountDownTimer: CountDownTimer = object : CountDownTimer(
@@ -459,6 +527,10 @@ class MainActivity :
 //            }
 //        }
 
+        // Initialize Android accelerometer sensor
+        sensorManager = getSystemService(SENSOR_SERVICE) as? SensorManager
+        accelerometerSensor = sensorManager?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+
         // build Google API Client with access to Wearable API
         client = GoogleApiClient.Builder(this)
             .addConnectionCallbacks(this)
@@ -485,6 +557,7 @@ class MainActivity :
         return if (!ppgGreenListener.isTracking() &&
             !ppgIrListener.isTracking() &&
             !ppgRedListener.isTracking()) {
+            stopAccelerometerTracker()
             runOnUiThread {
                 textStatus.text = getString(R.string.status_stopped)
                 textPpgGreenStatus.text = getString(R.string.status_stopped)
@@ -504,6 +577,7 @@ class MainActivity :
     override fun onDestroy() {
         Log.d(tag, "onDestroy")
         super.onDestroy()
+        stopAccelerometerTracker()
         if (connected) {
 //            heartRateListener.stopTracker()
             ppgGreenListener.stopTracker()
@@ -553,10 +627,10 @@ class MainActivity :
                     "— Samsung Health not connected yet")
             return
         }
-        currentMessage?.let {
-            when (messagePath) {
-                MessagePath.COMMAND -> {
-                    when (it.code) {
+        val it = currentMessage ?: return
+        when (messagePath) {
+            MessagePath.COMMAND -> {
+                when (it.code) {
                         ActivityCode.START_ACTIVITY -> { // start all tracker
                             runOnUiThread {
 //                                hrContainer.visibility = View.VISIBLE
@@ -567,6 +641,15 @@ class MainActivity :
                                 textStatus.text = getString(R.string.status_running)
                             }
 
+                            currentPpgGreenDataNumber = 0
+                            currentPpgIrDataNumber = 0
+                            currentPpgRedDataNumber = 0
+                            currentAccDataNumber = 0
+                            ppgGreenRecording.clear()
+                            ppgIrRecording.clear()
+                            ppgRedRecording.clear()
+                            accRecording.clear()
+
                             switchState(1)
 //                            heartRateListener.startTracker()
 //                            ppgGreenListener.startTracker()
@@ -575,6 +658,7 @@ class MainActivity :
                             startTracker(ppgGreenListener)
                             startTracker(ppgIrListener)
                             startTracker(ppgRedListener)
+                            startAccelerometerTracker()
                         }
                         ActivityCode.STOP_ACTIVITY -> { // stop all tracker
                             // Flush any remaining buffered data before stopping
@@ -591,6 +675,7 @@ class MainActivity :
                             ppgGreenListener.stopTracker()
                             ppgIrListener.stopTracker()
                             ppgRedListener.stopTracker()
+                            stopAccelerometerTracker()
                         }
                         ActivityCode.PAUSE_ACTIVITY -> { // pause all trackers
                             runOnUiThread {
@@ -603,6 +688,7 @@ class MainActivity :
                             ppgGreenListener.stopTracker()
                             ppgIrListener.stopTracker()
                             ppgRedListener.stopTracker()
+                            stopAccelerometerTracker()
 
                             // Notify Phone of paused state
                             switchState(ActivityCode.PAUSE_ACTIVITY)
@@ -616,6 +702,7 @@ class MainActivity :
                                 ).show()
                             }
                         }
+                        else -> {}
                     }
                 }
                 MessagePath.REQUEST -> {
@@ -625,7 +712,7 @@ class MainActivity :
                     }
                 }
                 MessagePath.INFO -> {
-                    TODO("Not yet implemented")
+                    Log.i(tag, "Received INFO message: ${it.content}")
                 }
                 MessagePath.DATA_PPG_GREEN -> {
                     if (it.code == ActivityCode.START_ACTIVITY) { // start tracker
@@ -702,8 +789,8 @@ class MainActivity :
                         invalidateAppStatus()
                     }
                 }
+                else -> {}
             }
-        }
     }
 
     private fun sendMessage(message: Message, path: String) {
@@ -793,6 +880,12 @@ class MainActivity :
             sendPpgData(ppgRedRecording, redSize)
             ppgRedRecording.clearFromStartUntil(redSize)
             Log.i(tag, "Flushed $redSize remaining PPG Red data points")
+        }
+        val accSize = accRecording.getSize()
+        if (accSize > 0) {
+            sendAccelerometerData(accRecording, accSize)
+            accRecording.clearFromStartUntil(accSize)
+            Log.i(tag, "Flushed $accSize remaining Accelerometer data points")
         }
     }
 

@@ -27,18 +27,20 @@ class PpgRecording() {
         timestamps.add(timestamp)
     }
 
-    fun clearFromStartUntil(index: Int) {
-//        for (i in 0 until index + 1) {
-//            values.removeAt(i)
-//            timestamps.removeAt(i)
-//        }
-        for (i in 1 until index) {
-            values.removeFirst()
-            timestamps.removeFirst()
+    fun clearFromStartUntil(count: Int) {
+        val toRemove = minOf(count, values.size, timestamps.size)
+        repeat(toRemove) {
+            if (values.isNotEmpty()) values.removeAt(0)
+            if (timestamps.isNotEmpty()) timestamps.removeAt(0)
         }
         Log.i("Wear: PpgRecording.clearFromStartUntil()","Done.\n" +
                 "Values size now: ${values.size}\n" +
                 "Timestamps size now: ${timestamps.size}")
+    }
+
+    fun clear() {
+        values.clear()
+        timestamps.clear()
     }
 
     fun getSize(): Int? {

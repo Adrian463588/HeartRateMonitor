@@ -69,4 +69,14 @@ object Constants {
     // so instead, safely use 12 sec (also to match the PPG Green batch)
     // UPDATE: now using 3s
     // 100 Hz * 3000 ms / 1000 = 300 data points
+
+    /**
+     * Sampling rate for Accelerometer in Hz.
+     */
+    const val ACCELEROMETER_SAMPLE_RATE: Double = 25.0
+
+    /**
+     * Batch size for Accelerometer data transmissions.
+     */
+    const val ACCELEROMETER_BATCH_SIZE: Int = 100
 }

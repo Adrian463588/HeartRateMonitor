@@ -104,4 +104,28 @@ The app requires specific permissions to function correctly.
 
 ---
 
+## 📦 Version History & Release Downloads
+
+Download the latest APK builds directly from [GitHub Releases](https://github.com/Adrian463588/HeartRateMonitor/releases) or build them locally.
+
+| Version | Target Module | Code | Date | Highlights & Changes | Download Artifact |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **v1.2** | `mobile` | `3` | Oct 2026 | • Perekaman & visualisasi Galaxy Watch Accelerometer (3-Axis X/Y/Z @ 25 Hz).<br>• Ekspor CSV Accelerometer via Android SAF (`-Accelerometer-.csv`).<br>• Auto-start ECG streaming ketika koneksi Polar H10 terdeteksi.<br>• Buffer drain & off-by-one flush safety fix. | [mobile-debug.apk](https://github.com/Adrian463588/HeartRateMonitor/releases) |
+| **v1.1** | `wear` | `2` | Oct 2026 | • SensorEventListener native `TYPE_ACCELEROMETER` terintegrasi.<br>• Pengiriman batching 100 data poin ke path `/dataaccelerometer`.<br>• Safe lifecycle start/pause/stop and memory buffer cleanup.<br>• Penghapusan unhandled TODO crash pada rute pesan `INFO`. | [wear-debug.apk](https://github.com/Adrian463588/HeartRateMonitor/releases) |
+| **v1.0** | `mobile` & `wear` | `1` | Initial | • Multi-channel optical PPG (Green 25 Hz, IR 100 Hz, Red 100 Hz).<br>• Polar H10 ECG streaming (130 Hz) & Pan-Tompkins QRS peak detection.<br>• Ekspor CSV multi-kanal. | Initial Release |
+
+### 🔨 Cara Membangun (Build) APK Mandiri
+
+Jalankan perintah berikut di terminal root proyek untuk mengompilasi APK debug:
+```powershell
+# Kompilasi kedua aplikasi (Mobile dan Wear OS)
+.\gradlew :mobile:assembleDebug :wear:assembleDebug
+
+# Lokasi Berkas Output:
+# Mobile: mobile/build/outputs/apk/debug/mobile-debug.apk
+# Wear:   wear/build/outputs/apk/debug/wear-debug.apk
+```
+
+---
+
 *Verified for Android 13 (API 33) and Wear OS 3.5+.*

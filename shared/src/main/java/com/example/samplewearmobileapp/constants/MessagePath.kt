@@ -28,4 +28,5 @@ object MessagePath {
     const val DATA_PPG_GREEN = "/datappggreen" // for PPG Green Data traffic
     const val DATA_PPG_IR = "/datappgir" // for PPG IR Data traffic
     const val DATA_PPG_RED = "/datappgred" // for PPG Red Data traffic
+    const val DATA_ACCELEROMETER = "/dataaccelerometer" // for Accelerometer Data traffic
 }
