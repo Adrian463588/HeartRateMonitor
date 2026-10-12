@@ -45,66 +45,75 @@ class TimestampHelperTest {
         assertEquals(TimestampHelper.POLAR_EPOCH_OFFSET_MS + 5000L, result)
     }
 
-    // --- nextEcgTimestamp with setEcgAnchor ---
-
+    // Deterministic clock fixtures below are regression inputs, not sensor recordings.
     @Test
-    fun `nextEcgTimestamp returns anchor time for first sample`() {
-        val anchor = 1000000L
-        TimestampHelper.setEcgAnchor(anchor)
-        val ts = TimestampHelper.nextEcgTimestamp(130.0)
-        assertEquals(anchor, ts)
+    fun `first packet is anchored at its last sample`() {
+        TimestampHelper.anchorPolarTimestamp(1_000_000_000L, 10_000L)
+        assertEquals(10_000L, TimestampHelper.polarNanosToAnchoredUnixMillis(1_000_000_000L))
+        assertEquals(9_992L, TimestampHelper.polarNanosToAnchoredUnixMillis(992_307_692L))
     }
 
     @Test
-    fun `nextEcgTimestamp produces sequential timestamps at correct interval`() {
-        val anchor = 1000000L
-        val sampleRate = 130.0
-        TimestampHelper.setEcgAnchor(anchor)
-
-        val ts0 = TimestampHelper.nextEcgTimestamp(sampleRate) // index 0
-        val ts1 = TimestampHelper.nextEcgTimestamp(sampleRate) // index 1
-        val ts2 = TimestampHelper.nextEcgTimestamp(sampleRate) // index 2
-
-        assertEquals(anchor, ts0)
-        // ts1 = anchor + (1 * 1000 / 130) = anchor + 7
-        val expectedInterval = (1000.0 / sampleRate).toLong()
-        assertEquals(anchor + expectedInterval, ts1)
-        assertEquals(anchor + (2 * 1000.0 / sampleRate).toLong(), ts2)
+    fun `130 Hz samples span one second without cumulative rounding drift`() {
+        TimestampHelper.anchorPolarTimestamp(0L, 10_000L)
+        val timestamps = (0..130).map {
+            TimestampHelper.polarNanosToAnchoredUnixMillis(it * 1_000_000_000L / 130)
+        }
+        assertEquals(1000L, timestamps.last() - timestamps.first())
+        assertTrue(timestamps.zipWithNext().all { (a, b) -> b - a in 7L..8L })
     }
 
     @Test
-    fun `nextEcgTimestamp without anchor uses system time`() {
-        // Explicitly clear any pre-set anchor from previous tests
-        TimestampHelper.setEcgAnchor(0L)
+    fun `missing samples retain their device time gap`() {
+        TimestampHelper.anchorPolarTimestamp(1_000_000_000L, 10_000L)
+        assertEquals(15_000L, TimestampHelper.polarNanosToAnchoredUnixMillis(6_000_000_000L))
+    }
+
+    @Test
+    fun `packet delay cannot change an established clock anchor`() {
+        TimestampHelper.anchorPolarTimestamp(1_000_000_000L, 10_000L)
+        TimestampHelper.anchorPolarTimestamp(2_000_000_000L, 30_000L)
+        assertEquals(11_000L, TimestampHelper.polarNanosToAnchoredUnixMillis(2_000_000_000L))
+    }
+
+    @Test
+    fun `resume clears the old anchor and retains the wall clock pause`() {
+        TimestampHelper.anchorPolarTimestamp(1_000_000_000L, 10_000L)
         TimestampHelper.resetEcgTimestamps()
-        val beforeMs = System.currentTimeMillis()
-        val ts = TimestampHelper.nextEcgTimestamp(130.0)
-        val afterMs = System.currentTimeMillis()
-        // Allow small tolerance for GC/scheduling jitter
-        assertTrue("Timestamp $ts should be near system time [$beforeMs..$afterMs]",
-            ts >= beforeMs - 10 && ts <= afterMs + 10)
+        TimestampHelper.anchorPolarTimestamp(20_000_000_000L, 29_000L)
+        assertEquals(29_000L, TimestampHelper.polarNanosToAnchoredUnixMillis(20_000_000_000L))
     }
 
-    // --- resetEcgTimestamps ---
+    @Test(expected = IllegalStateException::class)
+    fun `unanchored ECG cannot silently invent a timestamp`() {
+        TimestampHelper.polarNanosToAnchoredUnixMillis(1L)
+    }
 
     @Test
-    fun `resetEcgTimestamps restarts sample index`() {
-        val anchor = 5000L
-        TimestampHelper.setEcgAnchor(anchor)
-        TimestampHelper.nextEcgTimestamp(130.0) // index 0
-        TimestampHelper.nextEcgTimestamp(130.0) // index 1
-        TimestampHelper.nextEcgTimestamp(130.0) // index 2
-
-        // After reset, the pre-set anchor should be cleared by resetEcgTimestamps
-        // and the next call should re-anchor
-        TimestampHelper.setEcgAnchor(anchor)
-        TimestampHelper.resetEcgTimestamps()
-        // The anchor was set before reset, so it's retained
-        val ts = TimestampHelper.nextEcgTimestamp(130.0) // index 0 again
-        assertEquals(anchor, ts)
+    fun `accelerometer timestamp uses event time rather than delayed receipt time`() {
+        assertEquals(5000L, TimestampHelper.elapsedNanosToUnixMillis(2_000_000_000L, 3_000_000_000L, 6000L))
     }
 
     // --- validateTimestamp ---
+
+    @Test
+    fun `RR timestamps preserve millisecond intervals and packet receipt anchor`() {
+        assertArrayEquals(longArrayOf(9100L, 10000L), TimestampHelper.rrTimestampsFromReceipt(10000L, listOf(800, 900)))
+    }
+
+    @Test
+    fun `RR timestamps cannot double the epoch or collapse a notification pause`() {
+        val epoch = 1_792_000_000_000L
+        val before = TimestampHelper.rrTimestampsFromReceipt(epoch, listOf(1000)).single()
+        val after = TimestampHelper.rrTimestampsFromReceipt(epoch + 10000L, listOf(1000)).single()
+        assertEquals(10000L, after - before)
+        assertEquals(epoch + 10000L, after)
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun `invalid RR intervals cannot generate fabricated beat timing`() {
+        TimestampHelper.rrTimestampsFromReceipt(10000L, listOf(0))
+    }
 
     @Test
     fun `validateTimestamp passes when session is null`() {

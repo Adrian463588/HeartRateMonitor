@@ -1,132 +1,180 @@
-# AGENTS.md — System Specification & Agent Operational Guide
+# AGENTS.md — HeartRateMonitor specification and maintenance guide
 
-> **Architecture & Specification**: Dual-Module Vitals Tracking System (Samsung Galaxy Watch & Polar BLE Hub)  
-> **Development Methodology**: Spec-Driven Development (SDD), Behavior-Driven Development (BDD), BMAD & OpenSpec  
-> **Repository**: `HeartRateMonitor` (`Sample Wear Mobile App`)  
+Version contract: phone and Watch **1.3.0 / versionCode 4**.
+Modules: `mobile` (Android hub), `wear` (Galaxy Watch acquisition),
+`shared` (transport, buffers, clocks, transfer accounting).
+Current repair and evidence: [SENSOR_FIX_PLAN.md](SENSOR_FIX_PLAN.md).
+Detailed scenarios: [OpenSpec sensor specification](openspec/specs/01-watch-accelerometer-and-vitals.md).
 
----
+## Authoring rules
 
-## 1. Executive Summary
+Apply existing local authoring guidance when available:
 
-Aplikasi **HeartRateMonitor** merupakan sistem akuisisi dan sinkronisasi biosinyal klinis/fisiologis multi-sensor terdistribusi (*distributed client-node*). Sistem ini menghubungkan dua perangkat keras fisiologis utama:
-1. **Samsung Galaxy Watch (Wear OS)**: Mengukur Photoplethysmography optik multi-kanal (PPG Green @ 25 Hz, PPG IR @ 100 Hz, PPG Red @ 100 Hz) via Samsung Privileged Health Tracking SDK serta 3-Axis Accelerometer (X, Y, Z) via Android SensorManager.
-2. **Polar H10 / Verity Sense (BLE Hub)**: Mengukur sinyal Elektrokardiogram elektrik (ECG @ 130 Hz) serta detak jantung perangkat (Device HR).
-3. **Android Smartphone (Mobile Hub)**: Bertindak sebagai koordinator perekaman (master control), visualisasi gelombang *real-time* (60 FPS vsync via Choreographer scheduler), deteksi kompleks QRS real-time, dan penyimpanan data multi-kanal berformat CSV standar melalui Android Storage Access Framework (SAF).
+- `C:\Users\HP OMEN\.codex\RTK.md`: use RTK for concise command output.
+- `C:\Users\HP OMEN\.codex\skills\caveman\SKILL.md`: concise, technically exact communication.
+- `C:\Users\HP OMEN\.agents\skills\ponytail\SKILL.md`: KISS/YAGNI/DRY, root-cause fixes and focused regressions.
 
----
+These guide development only. They are not app dependencies; never claim an
+unavailable executable. Preserve security/accessibility controls, dirty files
+and explicit user delivery targets. Do not fabricate sensor samples, results
+or completed hardware checks. Deterministic test fixtures are not measurements.
 
-## 2. Fitur-Fitur Aplikasi & Status Implementasi
+## Feature inventory and required behavior
 
-| Fitur | Modul | Deskripsi | Status Implementasi |
-| :--- | :--- | :--- | :--- |
-| **PPG Green Tracking** | `wear` $\rightarrow$ `mobile` | Perekaman gelombang cahaya hijau (25 Hz), batching 300 data poin, transmisi DataApi, visualisasi grafik hijau. | ✅ Terimplementasi & Terverifikasi |
-| **PPG IR & Red Tracking** | `wear` $\rightarrow$ `mobile` | Perekaman gelombang inframerah dan merah (100 Hz), batching 300 data poin, visualisasi grafik independen. | ✅ Terimplementasi & Terverifikasi |
-| **Watch Accelerometer** | `wear` $\rightarrow$ `mobile` | Perekaman akselerasi 3-sumbu ($m/s^2$) dari sensor fisik jam, batching 100 poin, transmisi via `/dataaccelerometer`, dan ekspor CSV. | ✅ **Terimplementasi (Baru)** |
-| **Polar ECG Streaming** | `mobile` | Streaming BLE 130 Hz dari Polar H10, visualisasi kanvas grid ECG, pembersihan data, sinkronisasi waktu. | ✅ Terimplementasi & Auto-start Terverifikasi |
-| **QRS Peak Detection** | `mobile` | Filter Pan-Tompkins & Butterworth real-time untuk deteksi puncak gelombang R dan kalkulasi denyut jantung (QRS HR). | ✅ Terimplementasi |
-| **Dual-Mode Control** | `mobile` $\rightarrow$ `wear` | Kontrol Start/Pause/Resume/Stop tersinkronisasi via `Wearable.MessageApi` (`ActivityCode`). | ✅ Terimplementasi |
-| **Safe Buffer Drain (Flush)** | `wear` | Pengosongan paksa sisa data pada buffer lokal saat stop/pause untuk mencegah data terpotong di akhir sesi. | ✅ Terimplementasi & Off-by-one Diperbaiki |
-| **Resilient Timestamping** | `shared` | Normalisasi timestamp lintas domain (Samsung wall-clock vs Polar epoch nanos) via `TimestampHelper`. | ✅ Terimplementasi & Unit Test Pass |
-| **CSV Export SAF** | `mobile` | Ekspor CSV terstruktur (ECG, PPG Green, PPG IR, PPG Red, Accelerometer, atau All) dengan metadata lengkap. | ✅ Terimplementasi & Terintegrasi |
-| **Foreground Service** | `mobile` & `wear` | Menjamin perekaman tidak terbunuh oleh optimasi baterai OS (`MobileService` & `MainService`). | ✅ Terimplementasi |
+| Feature | Implementation / contract |
+| --- | --- |
+| Watch acceleration | Native `Sensor.TYPE_ACCELEROMETER`; X/Y/Z in m/s², requested 25 Hz; 100-sample batches. Honor registration result; no Samsung connection requirement. |
+| Watch PPG Green/IR/Red | One Samsung `PPG_CONTINUOUS` tracker with all three PPG types, **25 Hz each**, 300-sample batches. Only normal SDK status samples are accepted. |
+| PPG channel controls | Phone status controls include/exclude individual channels from acquisition buffers within the active session. The shared hardware tracker remains active while any channel is enabled. |
+| Polar connection | Manual device ID, Bluetooth permission/setup, connected/disconnected state, device name, firmware and battery information. |
+| Polar ECG | Auto-start only after ECG capability readiness during an active session. H10 ECG uses 130 Hz; select/validate that rate for the QRS processor. |
+| Polar HR/RR | Record SDK HR independently of ECG. Optional `rrsMs` already uses milliseconds; unavailable RR stays empty. Verity Sense must not be described as an ECG source. |
+| Clock conversion | Watch PPG retains SDK Unix milliseconds. Native acceleration maps elapsed-realtime event timestamps to Unix milliseconds from a captured clock anchor. |
+| ECG timing | Preserve per-sample Polar nanoseconds and gaps. Anchor the last sample of the first packet to phone receipt time once per subscription. Clear the anchor on resume/reconnect. |
+| HR/RR timing | HR rows use notification receipt time. RR plot intervals are back-calculated from that receipt and the SDK millisecond intervals; never add an epoch timestamp as a time correction. |
+| QRS analysis | Existing derivative/adaptive-threshold detector, R-peak markers and derived HR/RR. Peak indices continue to address the complete ECG recording after resume. No measured clinical accuracy claim. |
+| Start/Pause/Resume/Stop | A fresh Start resets recordings; Pause drains buffered samples and unregisters sensors; Resume preserves session identity and existing data; Stop drains and ends acquisition. |
+| Watch transport | Session ID, unique channel/session/batch paths, serialized uploads with retry, copied callback payloads, shape validation and duplicate suppression. Final counts cover Green/IR/Red/acceleration. |
+| Transfer completion | Stop receipt and received counts must match before a Watch transfer is complete. Late flushes remain acceptable after pause/stop. Explicit partial export remains marked incomplete. |
+| CSV export | SAF-selected directory and filename; ECG, each PPG channel, acceleration, Polar HR/RR, All PPG and All. Empty channels have zero rows, not padded samples. |
+| Plotting | Separate ECG, Green/IR/Red, QRS and HR/RR graphs; pan while stopped, visibility/analysis preferences. Repeated redraw requests are coalesced through Choreographer. No measured 60 FPS claim. |
+| Foreground lifecycle | Private declared phone/Watch services, ongoing notifications. Watch wake lock during active acquisition; sensors/wake lock released on pause, service retained for resume; Stop ends it after uploads drain. |
+| Reconfiguration | Plot setup refresh preserves samples. Polar API restart/device ID change ends an active session before replacing the connection, retaining received recordings for export. |
+| Settings/help | Device ID, plot/analysis visibility, configured preferences, SAF directory selection, device information and actionable in-app help. |
+| Distribution | Matching versioned debug APKs, immutable release tags, direct phone/Watch download links, preserved historical releases; Samsung AAR stays local/ignored. |
 
----
+Samsung's old `PPG_IR`/`PPG_RED` types are on-demand measurements at 100 Hz.
+They do not satisfy simultaneous continuous Green/IR/Red recording. Do not
+reintroduce three independent trackers or label the continuous data 100 Hz.
+Unsupported capability, permission/policy denial, missing sensors and
+registration failures must remain visible unavailable/error states.
 
-## 3. Spesifikasi Arsitektur & Data Pipeline
+ECG/HR clocks are receipt-anchored approximations: BLE delay and device clock
+differences limit absolute alignment. Native accelerometer rate is requested,
+not guaranteed; retain actual event times. Recording buffers live in memory.
+Activity destruction ends acquisition; process-death recovery and durable
+session storage are not implemented. The legacy ECG image helper has no active
+export menu. Do not advertise inactive helper code as a delivered feature.
 
-```
-+-----------------------------------------------------------------------------------+
-|                            SAMSUNG GALAXY WATCH (Wear OS)                        |
-|                                                                                   |
-|  +--------------------+   +-----------------------+   +------------------------+  |
-|  | Samsung Health SDK |   | SensorManager Native  |   | Foreground MainService |  |
-|  | (PPG Green,IR,Red) |   | (TYPE_ACCELEROMETER)  |   +------------------------+  |
-|  +---------+----------+   +-----------+-----------+                               |
-|            |                          |                                           |
-|            v                          v                                           |
-|     [PpgRecording]          [AccelerometerRecording]                              |
-|   (Batch Size = 300)          (Batch Size = 100)                                  |
-|            |                          |                                           |
-|            +------------+-------------+                                           |
-|                         | Gson JSON Serialize                                     |
-|                         v                                                         |
-|             Wearable.DataApi.putDataItem()                                        |
-|         (/datappggreen, /datappgir, /datappgred, /dataaccelerometer)              |
-+-------------------------+---------------------------------------------------------+
-                          | Bluetooth Wearable Transport
-                          v
-+-------------------------+---------------------------------------------------------+
-|                              ANDROID SMARTPHONE (Mobile)                          |
-|                                                                                   |
-|            Wearable.DataApi.addListener()                                         |
-|                         |                                                         |
-|       +-----------------+-------------------+------------------+                  |
-|       v                                     v                  v                  |
-| [PpgData Deserializer]             [AccelerometerData]   [Polar BLE Service]      |
-|       |                                     |            (ECG @ 130 Hz)           |
-|       v                                     v                  |                  |
-| [PpgPlotters (Gr/IR/Red)]           [accX/Y/Z/Time]            v                  |
-|       |                                     |            [EcgPlotter & QRS]       |
-|       +-----------------+-------------------+------------------+                  |
-|                         |                                                         |
-|                         v                                                         |
-|           [PlotUpdateScheduler (Choreographer)] -> UI 60 FPS                      |
-|                         |                                                         |
-|                         v                                                         |
-|        [SAF CSV Exporter (ECG, PPG 3-Ch, Accelerometer, All)]                     |
-+-----------------------------------------------------------------------------------+
-```
+## Non-negotiable requirements
 
----
+1. Values and timestamps correspond one-to-one. Only `size` samples may be
+   consumed, and invalid shapes, nonfinite acceleration, bad timestamp order
+   or mismatched PPG types must not crash ingestion or create substitute data.
+2. All acquisition/buffer/control changes are serialized on the main looper;
+   SDK/Wearable callbacks copy payloads before leaving their owning callback.
+   Rendering is deferred/coalesced separately; throughput needs device testing.
+3. Duplicate Start for the same active session is idempotent. Resume never
+   resets counters. Old session packets and duplicate unique batch keys do not
+   increase current counts. Callback generations suppress canceled listeners.
+4. Stop/Pause unregister producers and snapshot/drain application buffers.
+   A stopped phone must continue to ingest the same session's late final data.
+   Do not mark transfer complete solely because a stop command was sent.
+5. Device HR and QRS HR are distinct. Never gate real HR notifications on
+   `isEcgRunning`. ECG running means ECG data has actually arrived.
+6. Preserve physical sample gaps; no sample-index clock substitution, stale
+   anchors, synthetic zeros or forced timestamps claiming exact synchronization.
+7. A mandatory `setLocalTime` must not block ECG. Unsupported devices must
+   remain usable for their supported features.
+8. SDK AARs, real session CSVs, APKs, keystores and credentials do not belong in
+   source commits. Publish only the requested APK assets; never rewrite history
+   or change upstream as a routine repair.
 
-## 4. Invarian Sistem (Non-Negotiable Guardrails)
+## BDD acceptance and executable mapping
 
-1. **Zero Data Fabrication**: Tidak ada interpolasi palsu atau nilai nol sintetis untuk akselerometer atau PPG. Jika sensor tidak aktif, data ditandai kosong secara eksplisit.
-2. **Deterministic Lifecycle**:
-   - `START_ACTIVITY`: Listener akselerometer dan PPG aktif; counter dan buffer sesi di-reset bersih.
-   - `PAUSE_ACTIVITY`: Buffer tersisa di-flush ke ponsel; listener sensor di-unreg untuk efisiensi daya.
-   - `STOP_ACTIVITY`: Semua buffer di-flush tuntas; foreground service dihentikan; listener dilepas.
-3. **Clean Message Handling**: Seluruh rute `MessagePath` (`COMMAND`, `REQUEST`, `INFO`, data path) ditangani secara aman dengan pola non-throwing (tidak ada `TODO()` yang menyebabkan aplikasi crash).
-4. **Decoupled Plot Scheduling**: Ingest sinyal berfrekuensi tinggi (ECG 130 Hz, PPG 100 Hz) dipisahkan dari thread rendering UI menggunakan penjadwalan frame sinkron.
-
----
-
-## 5. Acceptance Scenarios (BDD Gherkin)
-
-### Skenario 1: Perekaman Accelerometer Galaxy Watch
 ```gherkin
-Given Galaxy Watch terhubung dengan Smartphone
-When smartphone mengirim pesan COMMAND dengan kode START_ACTIVITY
-Then smartwatch mengaktifkan listener Sensor.TYPE_ACCELEROMETER
-And data akselerasi (x, y, z, timestamp) dikumpulkan dalam AccelerometerRecording
-And ketika ukuran batch mencapai 100 sampel, data dikirim via Wearable DataApi ke /dataaccelerometer
+Feature: Watch acquisition without silent data loss
+  Scenario: Native motion remains available when Samsung PPG is unavailable
+    Given a Watch with a native accelerometer and unavailable Samsung PPG
+    When the phone starts a new session
+    Then acceleration uses real sensor event timestamps
+    And PPG reports unavailable without blocking acceleration
+
+  Scenario: Pause tail and resume remain in one session
+    Given 42 buffered Watch samples
+    When the phone pauses and subsequently resumes
+    Then all 42 samples are transmitted and may arrive after pause
+    And resume retains the session and does not erase received samples
+
+  Scenario: Full batch followed by one sample
+    Given 301 buffered PPG samples or 101 acceleration samples
+    When one full batch is drained
+    Then exactly one complete value/timestamp tuple remains
+
+  Scenario: Stop acknowledgement precedes the final data
+    Given a stopped session expecting 42 acceleration samples
+    When its count receipt arrives before its final batch
+    Then transfer completion remains false
+    And accepting that unique batch makes completion true
+    And replaying it cannot increase sample counts
+
+Feature: Polar timing
+  Scenario: ECG clock preserves rate and dropped data
+    Given 131 Polar sample timestamps spanning one second at 130 Hz
+    When those nanoseconds are mapped to Unix milliseconds
+    Then the timestamp span remains one second
+    And later sample gaps remain gaps regardless of packet delay
+
+  Scenario: RR display resumes after a notification gap
+    Given RR intervals already expressed in milliseconds
+    When a packet arrives after a pause
+    Then its last beat is anchored to that packet receipt
+    And the epoch is never added to itself
+
+Feature: Android controls
+  Scenario: Start Pause Resume Stop
+    Given the installed phone app
+    When Start Pause Resume Stop are invoked
+    Then the same session resumes
+    And its declared private foreground service stops at Stop
+
+  Scenario: A sensor burst requests many redraws
+    Given 300 redraw requests for one plot before a frame
+    When Choreographer renders that frame
+    Then that plot redraws once
 ```
 
-### Skenario 2: Stop & Pengosongan Buffer (Flush Safety)
-```gherkin
-Given proses perekaman sedang aktif dan tersisa 42 sampel accelerometer di buffer
-When smartphone mengirim perintah STOP_ACTIVITY
-Then smartwatch memanggil flushRemainingData()
-And 42 sampel accelerometer dikirim ke smartphone sebelum listener dimatikan
-And listener sensor di-unregister dari SensorManager
+| Contract | Regression |
+| --- | --- |
+| Clock interval, gaps, reset, event time, RR epoch | `shared/.../TimestampHelperTest.kt` |
+| Buffer boundaries / final tails / empty reset | `shared/.../RecordingBufferTest.kt` |
+| Late stop/pause, replay, old session, complete counts | `shared/.../WatchSessionTest.kt` |
+| Transport validation, capacity vs size, session equality | `shared/.../SensorBatchValidationTest.kt` |
+| Missing Samsung readiness, continuous rate metadata | `wear/.../ListenerReadinessTest.kt`, `RecordingBufferTest.kt` |
+| Manifest/service lifecycle/frame redraw | `mobile/src/androidTest/.../RecordingLifecycleTest.kt` |
+
+## SDD workflow and release gates
+
+Use the smallest investigation–specification–plan–implementation–review loop.
+Before editing, read this file, the sensor specification, and applicable
+`PRD.md`/`DESIGN.md` if present; these last two are not separate files here.
+Record scope, root causes, BDD contracts, risks and test mapping in the plan.
+Update contracts when evidence changes the design; link each fix to verification.
+
+JDK 17 via `JAVA_HOME`; Gradle 8.6, AGP 8.4.0, Kotlin 1.9.24. Never restore a
+developer-specific absolute JDK path in `gradle.properties`. Privately obtain
+Samsung Health Sensor SDK 1.4.1 in `wear/libs/` for full Watch checks.
+
+```powershell
+.\gradlew.bat :shared:test :mobile:testDebugUnitTest :wear:testDebugUnitTest :mobile:lintDebug :wear:lintDebug :mobile:assembleDebug :wear:assembleDebug :mobile:assembleDebugAndroidTest --no-daemon --console=plain
+.\gradlew.bat :mobile:connectedDebugAndroidTest --no-daemon --console=plain
+git diff --check
 ```
 
-### Skenario 3: Penerimaan & Ekspor CSV di Smartphone
-```gherkin
-Given sesi perekaman telah selesai dan data accelerometer tersimpan di ponsel
-When pengguna memilih menu "Save" -> "Save All" atau "Save Accelerometer Data"
-Then berkas "<nama>-Accelerometer-<timestamp>.csv" dibuat melalui DocumentTree SAF
-And baris header mencatat metadata (versi aplikasi, datatype, samplescount, samplingrate)
-And baris data memuat format "x,y,z,timestamp,formatted_date"
-```
+Public CI runs shared/phone unit tests, phone lint and phone APK build. Samsung
+SDK confidentiality requires full Watch compilation/tests/lint locally before
+each release. Passing CI is not a substitute for that Watch gate.
 
----
+Software verification and exact warning/test counts are recorded in the repair
+plan. Hardware acceptance remains separate and unchecked when no Watch/H10 is
+available. Required hardware receipt: actual devices/firmware/SDK permission,
+session duration, per-channel counts and CSV hashes, timestamp intervals/gaps,
+pause/resume/stop tails, reconnection behavior and absent-sensor behavior.
+Do not fabricate receipts or claim production/device acceptance from compilation.
 
-## 6. Verifikasi & Checklist Pemeliharaan
-
-- [x] Modul `shared` lulus pengujian unit: `MessageTest`, `PpgDataTest`, `TimestampHelperTest`, `AccelerometerDataTest`.
-- [x] Modul `mobile` lulus pengujian unit: `FixedSizeListTest`, `RunningAverageTest`, `RunningMaxTest`, `AppUtilsTest`.
-- [x] Modul `wear` lulus kompilasi tanpa unhandled stubs atau dependensi hilang.
-- [x] Linter & compiler warnings bebas dari error pemblokir.
-- [x] Konfigurasi JDK terstandardisasi pada Java 17 via `gradle.properties` (`org.gradle.java.home`).
-- [x] Versi aplikasi dimutakhirkan (`versionCode` dan `versionName`) untuk kemudahan distribusi user.
+Workflow references: [OpenSpec](https://github.com/Fission-AI/OpenSpec),
+[BMAD](https://github.com/bmad-code-org/BMAD-METHOD),
+[Spec Kit contracts](https://github.com/github/spec-kit/blob/main/docs/guides/contract-driven-development.md).
+Sensor contract sources: [Samsung tracker modes/rates](https://developer.samsung.com/health/sensor/api-reference/com/samsung/android/service/health/tracking/data/HealthTrackerType.html),
+[Samsung PPG keys/status](https://developer.samsung.com/health/sensor/api-reference/com/samsung/android/service/health/tracking/data/ValueKey.PpgSet.html),
+[Polar SDK](https://github.com/polarofficial/polar-ble-sdk).

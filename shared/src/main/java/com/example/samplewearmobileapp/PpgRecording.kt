@@ -1,6 +1,5 @@
 package com.example.samplewearmobileapp
 
-import android.util.Log
 import com.example.samplewearmobileapp.models.PpgType
 
 class PpgRecording() {
@@ -33,9 +32,6 @@ class PpgRecording() {
             if (values.isNotEmpty()) values.removeAt(0)
             if (timestamps.isNotEmpty()) timestamps.removeAt(0)
         }
-        Log.i("Wear: PpgRecording.clearFromStartUntil()","Done.\n" +
-                "Values size now: ${values.size}\n" +
-                "Timestamps size now: ${timestamps.size}")
     }
 
     fun clear() {
@@ -45,9 +41,6 @@ class PpgRecording() {
 
     fun getSize(): Int? {
         if (values.size != timestamps.size) {
-            Log.e("Wear: PpgRecording","Values and timestamps don't match.\n" +
-                    "Values size: ${values.size}\n" +
-                    "Timestamps size: ${timestamps.size}")
             return null
         }
         return values.size

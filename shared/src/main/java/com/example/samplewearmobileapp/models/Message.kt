@@ -6,7 +6,9 @@ data class Message(
     var sender: String,
     var content: String?,
     var code: Int,
-    var extraCode: Int?
+    var extraCode: Int?,
+    var sessionId: Long = 0L,
+    var sampleCounts: IntArray? = null
 ) {
     /**
      * Empty/dummy constructor

@@ -1,6 +1,5 @@
 package com.example.samplewearmobileapp
 
-import android.util.Log
 
 class AccelerometerRecording {
     val xValues = mutableListOf<Float>()
@@ -23,7 +22,6 @@ class AccelerometerRecording {
             if (zValues.isNotEmpty()) zValues.removeAt(0)
             if (timestamps.isNotEmpty()) timestamps.removeAt(0)
         }
-        Log.i("Wear: AccRecording", "Cleared $toRemove items. Remaining size: ${xValues.size}")
     }
 
     fun clear() {

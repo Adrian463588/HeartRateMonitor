@@ -22,7 +22,7 @@ object Constants {
      * Sampling rate for PPG IR and Red.
      * @see PPG_GREEN_SAMPLE_RATE
      */
-    const val PPG_IR_RED_SAMPLE_RATE: Double = 100.0
+    const val PPG_IR_RED_SAMPLE_RATE: Double = 25.0 // Samsung PPG_CONTINUOUS
 
     /**
      * The rate of PPG Green sampling event in ms.
@@ -40,7 +40,7 @@ object Constants {
     /**
      * The rate of PPG IR and Red batching event batch in ms.
      */
-    const val PPG_IR_RED_BATCH_TICK_RATE: Long = 3000
+    const val PPG_IR_RED_BATCH_TICK_RATE: Long = 12000
     // the same as PPG_GREEN_TICK_RATE = 12000 ms = 12 sec.
     // this is implemented due to flooding when data are sent each second
     // UPDATE: now using 3s

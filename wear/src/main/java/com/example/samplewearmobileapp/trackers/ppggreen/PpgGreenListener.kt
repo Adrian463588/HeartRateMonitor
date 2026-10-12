@@ -22,7 +22,6 @@ class PpgGreenListener internal constructor() : Listener() {
                     }
                 } else {
                     Log.i(tag, "onDataReceived List is empty")
-                    readZeroValue()
                 }
             }
 
@@ -60,13 +59,4 @@ class PpgGreenListener internal constructor() : Listener() {
         Log.d(tag, dataPoint.toString())
     }
 
-    fun readZeroValue() {
-        val zeroPpgGreenData = PpgGreenData(
-            PpgGreenStatus.PPG_GREEN_STATUS_NONE.code,
-            0,
-            0
-        )
-        TrackerDataNotifier.instance?.notifyPpgGreenTrackerObservers(zeroPpgGreenData)
-        Log.d(tag, "Zero PPG Value notified")
-    }
 }

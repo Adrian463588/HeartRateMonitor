@@ -1,0 +1,30 @@
+name: Android regression checks
+
+on:
+  push:
+    branches: [Fix-issue]
+    paths-ignore: ['**/*.md']
+  pull_request:
+    paths-ignore: ['**/*.md']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  phone-and-shared:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Install public Android build components
+        run: sdkmanager 'platforms;android-33' 'build-tools;34.0.0'
+      - name: Test sensor contracts and phone; run Android lint and APK build
+        run: |
+          chmod +x gradlew
+          ./gradlew :shared:test :mobile:testDebugUnitTest :mobile:lintDebug :mobile:assembleDebug --no-daemon --console=plain
+      # Full Wear checks run locally before release with the privately supplied Samsung AAR.
+      # Do not upload the SDK or real sensor/session data to Actions artifacts.

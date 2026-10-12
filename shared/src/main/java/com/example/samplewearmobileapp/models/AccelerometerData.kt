@@ -17,8 +17,16 @@ data class AccelerometerData(
     var zValues: FloatArray,
     var timestamps: LongArray,
     var windowSize: Int,
-    var size: Int = 0
+    var size: Int = 0,
+    var sessionId: Long = 0L
 ) {
+    fun isValid(): Boolean = size in 1..windowSize &&
+        xValues.size == windowSize && yValues.size == windowSize &&
+        zValues.size == windowSize && timestamps.size == windowSize &&
+        (0 until size).all { xValues[it].isFinite() && yValues[it].isFinite() &&
+            zValues[it].isFinite() && timestamps[it] > 0L &&
+            (it == 0 || timestamps[it] > timestamps[it - 1]) }
+
     constructor(windowSize: Int) : this(
         FloatArray(windowSize),
         FloatArray(windowSize),
@@ -53,6 +61,7 @@ data class AccelerometerData(
         if (!timestamps.contentEquals(other.timestamps)) return false
         if (windowSize != other.windowSize) return false
         if (size != other.size) return false
+        if (sessionId != other.sessionId) return false
 
         return true
     }
@@ -64,6 +73,7 @@ data class AccelerometerData(
         result = 31 * result + timestamps.contentHashCode()
         result = 31 * result + windowSize
         result = 31 * result + size
+        result = 31 * result + sessionId.hashCode()
         return result
     }
 

@@ -1,4 +1,5 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
+    <string name="save_device_hr_data_item">Save Polar HR and RR Data</string>
     <string name="app_name">Sample Wear Mobile App</string>
 <!--    <string name="title">Message Control</string>-->
 

@@ -1,85 +1,62 @@
 package com.example.samplewearmobileapp
 
-import android.app.ActivityManager
+import android.annotation.SuppressLint
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
-import android.os.Build
 import android.os.IBinder
+import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
-import androidx.core.content.ContextCompat.getSystemService
-import androidx.core.content.ContextCompat.startForegroundService
 
+/** Keeps the sensor process/CPU available; ownership ends on explicit stop or Activity destruction. */
 class MainService : Service() {
-    private val CHANNEL_ID = "MainService"
-    private var isServiceRunning = false
+    private var wakeLock: PowerManager.WakeLock? = null
 
     companion object {
-        fun startService(context: Context, message: String) {
-            val intent = Intent(context, MainService::class.java)
-            intent.putExtra("message", message)
-            startForegroundService(context, intent)
+        private const val CHANNEL_ID = "MainService"
 
-            val service = getSystemService(context, MainService::class.java)
-            service?.isServiceRunning = true
+        fun startService(context: Context, message: String) {
+            ContextCompat.startForegroundService(context,
+                Intent(context, MainService::class.java).putExtra("message", message))
         }
 
         fun stopService(context: Context) {
-            val service = getSystemService(context, MainService::class.java)
-            service?.isServiceRunning = false
-
-            val intent = Intent(context, MainService::class.java)
-            context.stopService(intent)
-        }
-
-        fun isServiceRunning(context: Context) : Boolean {
-            val service = getSystemService(context, MainService::class.java)
-            return service?.isServiceRunning() ?: false
+            context.stopService(Intent(context, MainService::class.java))
         }
     }
 
+    // Session-scoped: release on Pause and onDestroy; a timeout would truncate an active recording.
+    @SuppressLint("WakelockTimeout")
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val message = intent?.getStringExtra("message")
-        createNotificationChannel()
-//        val notificationIntent = Intent(this, MainActivity::class.java)
-
-        val pendingIntent: PendingIntent =
-            Intent(this, MainActivity::class.java).let { notificationIntent ->
-                PendingIntent.getActivity(this, 0, notificationIntent,
-                    PendingIntent.FLAG_IMMUTABLE)
-            }
-
-        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("Main Foreground Service Sample App")
-            .setContentText("Tracking...")
+        val message = intent?.getStringExtra("message") ?: "Recording sensors"
+        getSystemService(NotificationManager::class.java).createNotificationChannel(
+            NotificationChannel(CHANNEL_ID, "Watch recording", NotificationManager.IMPORTANCE_LOW))
+        val pending = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java),
+            PendingIntent.FLAG_IMMUTABLE)
+        startForeground(1, NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle("Watch sensor recording")
+            .setContentText(message)
             .setSmallIcon(R.drawable.ic_notification)
-            .setContentIntent(pendingIntent)
-            .build()
-
-        startForeground(1, notification)
-        isServiceRunning = true
-        return START_STICKY
+            .setContentIntent(pending)
+            .setOngoing(true).build())
+        if (message == "Paused") {
+            if (wakeLock?.isHeld == true) wakeLock?.release()
+        } else {
+            if (wakeLock == null) wakeLock = getSystemService(PowerManager::class.java)
+                .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "HeartRateMonitor:WatchRecording")
+            if (wakeLock?.isHeld != true) wakeLock?.acquire()
+        }
+        return START_NOT_STICKY
     }
 
-    override fun onBind(p0: Intent?): IBinder? {
-        return null
+    override fun onDestroy() {
+        if (wakeLock?.isHeld == true) wakeLock?.release()
+        super.onDestroy()
     }
 
-    private fun createNotificationChannel() {
-        val serviceChannel = NotificationChannel(
-            CHANNEL_ID, "Main Foreground Service Channel",
-            NotificationManager.IMPORTANCE_HIGH
-        )
-
-        val manager = getSystemService(NotificationManager::class.java)
-        manager?.createNotificationChannel(serviceChannel)
-    }
-
-    private fun isServiceRunning() : Boolean {
-        return isServiceRunning
-    }
+    override fun onBind(intent: Intent?): IBinder? = null
 }

@@ -321,7 +321,7 @@ class QrsPlotter: PlotterListener {
 //                    + " update: thread: " + Thread.currentThread()
 //                    .getName());
         if (dataIndex % 73 == 0L) {
-            parentActivity.runOnUiThread { plot.redraw() }
+            parentActivity.requestPlotRedraw(plot)
         }
     }
 

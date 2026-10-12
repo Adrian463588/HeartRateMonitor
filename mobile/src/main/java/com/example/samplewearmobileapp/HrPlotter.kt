@@ -9,6 +9,7 @@ import com.example.samplewearmobileapp.utils.AppUtils
 import java.text.*
 import java.util.*
 import kotlin.math.ceil
+import com.example.samplewearmobileapp.utils.TimestampHelper
 import kotlin.math.roundToInt
 import kotlin.math.roundToLong
 
@@ -176,7 +177,7 @@ class HrPlotter: PlotterListener {
                     toAppendTo: StringBuffer,
                     pos: FieldPosition
                 ): StringBuffer {
-                    val time = (obj as Number).toDouble().roundToInt()
+                    val time = (obj as Number).toDouble().roundToLong()
                     return dateFormat.format(time, toAppendTo, pos)
                 }
 
@@ -230,65 +231,15 @@ class HrPlotter: PlotterListener {
             hrSeries1!!.addLast(time, hr)
         }
 
-        // RR
-        val rrValuesCount = rrsMs.size
-        if (plotRr1 && rrValuesCount > 0) {
-            val tValues = DoubleArray(rrValuesCount)
-            val rrValues = arrayOfNulls<Int>(rrValuesCount)
-
-//            rrValues = rrsMs.toArray(rrValues)
-            // replicate toArray() function
+        // Polar SDK supplies milliseconds, not raw BLE 1/1024-second values.
+        if (plotRr1 && rrsMs.isNotEmpty() && rrsMs.all { it > 0 }) {
+            val timestamps = TimestampHelper.rrTimestampsFromReceipt(time.roundToLong(), rrsMs)
             for (i in rrsMs.indices) {
-                rrValues[i] = rrsMs[i]
+                val value = RR_SCALE * rrsMs[i]
+                runningMax1.add(value)
+                rrSeries1!!.addLast(timestamps[i], value)
             }
-
-            // Find the sum of the RR intervals
-            var totalRr = 0.0
-            for (i in 0 until rrValuesCount) {
-                totalRr += rrValues[i]!!.toDouble()
-            }
-            // First time
-            if (java.lang.Double.isInfinite(startRrTime)) {
-                lastUpdateTime = time - totalRr
-                lastRrTime = lastUpdateTime
-                startRrTime = lastRrTime
-                totalRrTime = 0.0
-            }
-            totalRrTime += totalRr
-            //        Log.d(TAG, "lastRrTime=" + mLastRrTime
-//                + " totalRR=" + totalRR
-//                + " elapsed=" + (mLastRrTime - mStartRrTime)
-//                + " totalRrTime=" + mTotalRrTime);
-            var rr: Double
-            var t = lastRrTime
-            for (i in 0 until rrValuesCount) {
-                rr = rrValues[i]!!.toDouble()
-                t += rr
-                tValues[i] = t
-            }
-            // Keep them in this interval
-            if (tValues[0] < lastUpdateTime) {
-                lastUpdateTime = tValues[0]
-                val deltaT = lastUpdateTime
-                t += deltaT
-                for (i in 0 until rrValuesCount) {
-                    tValues[i] += deltaT
-                }
-            }
-            // Keep them from being in the future
-            if (t > time) {
-                val deltaT = t - time
-                for (i in 0 until rrValuesCount) {
-                    tValues[i] -= deltaT
-                }
-            }
-            // Add to the series
-            for (i in 0 until rrValuesCount) {
-                rr = RR_SCALE * rrValues[i]!!
-                runningMax1.add(rr)
-                rrSeries1!!.addLast(tValues[i], rr)
-                lastRrTime = tValues[i]
-            }
+            lastRrTime = timestamps.last().toDouble()
             lastUpdateTime = time
         }
     }
@@ -369,7 +320,7 @@ class HrPlotter: PlotterListener {
     override fun update() {
 //        Log.d(TAG, "HRPlotter: update: dataList sizes=" + mHrRrList1.size()
 //                + "," + mHrRrList2.size());
-        parentActivity.runOnUiThread { plot.redraw() }
+        parentActivity.requestPlotRedraw(plot)
     }
 
     /**

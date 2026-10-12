@@ -230,7 +230,7 @@ class PpgPlotter: PlotterListener {
      * Updates the plot. Runs on the UI thread.
      */
     override fun update() {
-        parentActivity.runOnUiThread { plot.redraw() }
+        parentActivity.requestPlotRedraw(plot)
     }
 
     /**

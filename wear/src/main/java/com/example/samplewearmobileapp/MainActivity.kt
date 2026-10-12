@@ -1,1051 +1,426 @@
 package com.example.samplewearmobileapp
 
 import android.Manifest
-import android.app.Activity
 import android.content.pm.PackageManager
-import android.os.Build
-import android.os.Bundle
-import android.os.CountDownTimer
-import android.util.Log
-import android.view.View
-import android.view.WindowManager
-import android.widget.LinearLayout
-import android.widget.TextView
-import android.widget.Toast
-import androidx.core.app.ActivityCompat
-import androidx.core.content.ContextCompat
-import androidx.fragment.app.FragmentActivity
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
+import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
+import android.util.Log
+import android.view.View
+import android.widget.Toast
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
+import androidx.fragment.app.FragmentActivity
 import androidx.wear.ambient.AmbientModeSupport
-import com.example.samplewearmobileapp.Constants.ACCELEROMETER_BATCH_SIZE
-import com.example.samplewearmobileapp.Constants.PPG_GREEN_BATCH_SIZE
-import com.example.samplewearmobileapp.Constants.PPG_GREEN_SAMPLE_RATE
-import com.example.samplewearmobileapp.Constants.PPG_IR_RED_BATCH_SIZE
-import com.example.samplewearmobileapp.Constants.PPG_IR_RED_BATCH_TICK_RATE
-import com.example.samplewearmobileapp.Constants.PPG_IR_RED_SAMPLE_RATE
-import com.example.samplewearmobileapp.models.AccelerometerData
-import com.example.samplewearmobileapp.constants.codes.ActivityCode
 import com.example.samplewearmobileapp.constants.Entity
 import com.example.samplewearmobileapp.constants.MessagePath
+import com.example.samplewearmobileapp.constants.codes.ActivityCode
 import com.example.samplewearmobileapp.constants.codes.ExtraCode.TOGGLE_ACTIVITY
 import com.example.samplewearmobileapp.databinding.ActivityMainBinding
+import com.example.samplewearmobileapp.models.AccelerometerData
 import com.example.samplewearmobileapp.models.Message
 import com.example.samplewearmobileapp.models.PpgData
 import com.example.samplewearmobileapp.models.PpgType
-import com.example.samplewearmobileapp.trackers.Listener
-import com.example.samplewearmobileapp.trackers.ppggreen.PpgGreenData
-import com.example.samplewearmobileapp.trackers.ppggreen.PpgGreenListener
-import com.example.samplewearmobileapp.trackers.ppggreen.PpgGreenStatus
-import com.example.samplewearmobileapp.trackers.ppgir.PpgIrData
-import com.example.samplewearmobileapp.trackers.ppgir.PpgIrListener
-import com.example.samplewearmobileapp.trackers.ppgred.PpgRedData
-import com.example.samplewearmobileapp.trackers.ppgred.PpgRedListener
+import com.example.samplewearmobileapp.trackers.PpgContinuousListener
+import com.example.samplewearmobileapp.utils.TimestampHelper
 import com.google.android.gms.common.api.GoogleApiClient
-import com.google.android.gms.wearable.Node
+import com.google.android.gms.wearable.MessageApi
 import com.google.android.gms.wearable.PutDataRequest
 import com.google.android.gms.wearable.Wearable
 import com.google.gson.Gson
 import com.samsung.android.service.health.tracking.HealthTrackerException
-import java.util.concurrent.atomic.AtomicBoolean
+import java.util.ArrayDeque
 
-class MainActivity :
-    FragmentActivity(),
-    GoogleApiClient.ConnectionCallbacks,
-    AmbientModeSupport.AmbientCallbackProvider
-{
-    private val tag = "Wear: MainActivity"
+class MainActivity : FragmentActivity(), GoogleApiClient.ConnectionCallbacks,
+    AmbientModeSupport.AmbientCallbackProvider {
     private lateinit var binding: ActivityMainBinding
     private lateinit var client: GoogleApiClient
-    private var connectedNode: List<Node>? = null
-    private var message: Message = Message()
-    private var currentMessage: Message? = null
-    private var currentState = 0
-    private var currentPpgGreenDataNumber = 0
-    private var currentPpgIrDataNumber = 0
-    private var currentPpgRedDataNumber = 0
-    private var isOnDemandMeasurementRunning = AtomicBoolean(false)
-    private lateinit var ambientController: AmbientModeSupport.AmbientController
-
-    private lateinit var textStatus: TextView
-    private lateinit var textTip: TextView
-//    private lateinit var hrContainer: LinearLayout
-//    private lateinit var textHeartRate: TextView
-//    private lateinit var textHeartRateStatus: TextView
-//    private lateinit var textIbi: TextView
-//    private lateinit var textIbiStatus: TextView
-    private lateinit var ppgGreenContainer: LinearLayout
-    private lateinit var textPpgGreen: TextView
-    private lateinit var textPpgGreenStatus: TextView
-    private lateinit var textPpgGreenNumber: TextView
-    private lateinit var textPpgGreenTimestamp: TextView
-    private lateinit var ppgIrContainer: LinearLayout
-    private lateinit var textPpgIr: TextView
-    private lateinit var textPpgIrStatus: TextView
-    private lateinit var textPpgIrNumber: TextView
-    private lateinit var textPpgIrTimestamp: TextView
-    private lateinit var ppgRedContainer: LinearLayout
-    private lateinit var textPpgRed: TextView
-    private lateinit var textPpgRedStatus: TextView
-    private lateinit var textPpgRedNumber: TextView
-    private lateinit var textPpgRedTimestamp: TextView
-
-    private lateinit var uiUpdateThread: Thread
     private lateinit var connectionManager: ConnectionManager
-//    private lateinit var heartRateListener: HeartRateListener
-    private lateinit var ppgGreenListener: PpgGreenListener
-    private lateinit var ppgIrListener: PpgIrListener
-    private lateinit var ppgRedListener: PpgRedListener
-    private var connected = false
-//    private var heartRateDataLast = HeartRateData()
-//    private var ppgGreenDataLast = PpgGreenData()
-//    private var ppgIrDataLast = PpgIrData()
-//    private var ppgRedDataLast = PpgRedData()
-
-    // these vars are used to store incoming data
-    // until an amount equal to batch size is reached
-    // and then be transported to mobile module
-//    private var ppgGreenDataBatch = PpgData(PPG_GREEN_BATCH_SIZE, PpgType.PPG_GREEN)
-//    private var ppgIrDataBatch = PpgData(PPG_IR_RED_BATCH_SIZE, PpgType.PPG_IR)
-//    private var ppgRedDataBatch = PpgData(PPG_IR_RED_BATCH_SIZE, PpgType.PPG_RED)
-    private var ppgGreenRecording = PpgRecording(PpgType.PPG_GREEN)
-    private var ppgIrRecording = PpgRecording(PpgType.PPG_IR)
-    private var ppgRedRecording = PpgRecording(PpgType.PPG_RED)
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private val gson = Gson()
+    private var currentState = ActivityCode.DO_NOTHING
+    private var sessionId = 0L
+    private var batchNumber = 0L
+    private var destroying = false
+    private val recordings = PpgType.values().associateWith { PpgRecording(it) }
+    private val counts = PpgType.values().associateWith { 0 }.toMutableMap()
+    private val ppgListener = PpgContinuousListener(::recordPpg, ::showPpgError)
+    private var ppgAvailable = false
     private var sensorManager: SensorManager? = null
-    private var accelerometerSensor: Sensor? = null
+    private var accelerometer: Sensor? = null
     private var isAccTracking = false
-    private var currentAccDataNumber = 0
-    private var accRecording = AccelerometerRecording()
+    private var accCount = 0
+    private var accUnixAnchorMs = 0L
+    private var accElapsedAnchorNanos = 0L
+    private val accRecording = AccelerometerRecording()
+    private val uploads = ArrayDeque<Pair<String, ByteArray>>()
+    private var uploadInFlight = false
 
     private val accelerometerListener = object : SensorEventListener {
-        override fun onSensorChanged(event: SensorEvent?) {
-            if (event?.sensor?.type == Sensor.TYPE_ACCELEROMETER) {
-                val x = event.values[0]
-                val y = event.values[1]
-                val z = event.values[2]
-                val timestamp = System.currentTimeMillis()
-                currentAccDataNumber++
-                accRecording.add(x, y, z, timestamp)
-                if (accRecording.getSize() >= ACCELEROMETER_BATCH_SIZE) {
-                    sendAccelerometerData(accRecording, ACCELEROMETER_BATCH_SIZE)
-                    accRecording.clearFromStartUntil(ACCELEROMETER_BATCH_SIZE)
-                }
-            }
-        }
-
-        override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
-    }
-
-    private fun startAccelerometerTracker() {
-        if (!isAccTracking && accelerometerSensor != null) {
-            sensorManager?.registerListener(
-                accelerometerListener,
-                accelerometerSensor,
-                40000 // 40ms = 25Hz sample rate
+        override fun onSensorChanged(event: SensorEvent) {
+            if (!isAccTracking || event.sensor.type != Sensor.TYPE_ACCELEROMETER ||
+                event.values.size < 3 || event.values.take(3).any { !it.isFinite() }) return
+            val timestamp = TimestampHelper.elapsedNanosToUnixMillis(
+                event.timestamp, accElapsedAnchorNanos, accUnixAnchorMs
             )
-            isAccTracking = true
-            Log.i(tag, "Accelerometer tracker started")
-        }
-    }
-
-    private fun stopAccelerometerTracker() {
-        if (isAccTracking) {
-            sensorManager?.unregisterListener(accelerometerListener)
-            isAccTracking = false
-            Log.i(tag, "Accelerometer tracker stopped")
-        }
-    }
-
-    private fun sendAccelerometerData(recording: AccelerometerRecording, actualSize: Int? = null) {
-        val windowSize = actualSize ?: ACCELEROMETER_BATCH_SIZE
-        val accData = AccelerometerData(windowSize)
-        for (i in 0 until windowSize) {
-            accData.xValues[i] = recording.xValues[i]
-            accData.yValues[i] = recording.yValues[i]
-            accData.zValues[i] = recording.zValues[i]
-            accData.timestamps[i] = recording.timestamps[i]
-            accData.size++
-        }
-        val bytes = Gson().toJson(accData).toByteArray()
-        Wearable.DataApi.putDataItem(
-            client,
-            PutDataRequest.create(MessagePath.DATA_ACCELEROMETER).setData(bytes).setUrgent()
-        )
-        Log.i(tag, "Accelerometer Data sent via DataApi! points: $windowSize")
-    }
-
-    // unused
-    private val onDemandCountDownTimer: CountDownTimer = object : CountDownTimer(
-        ON_DEMAND_MEASUREMENT_DURATION.toLong(),
-        ON_DEMAND_MEASUREMENT_TICK.toLong()
-    ) {
-        override fun onTick(timeLeft: Long) {
-            if (!isOnDemandMeasurementRunning.get())
-                cancel()
-        }
-
-        override fun onFinish() {
-            if (!isOnDemandMeasurementRunning.get()) return
-            Log.i(tag, "On-Demand measurement finished")
-            runOnUiThread {
-                textPpgIrStatus.setText(R.string.status_finished)
-                textPpgRedStatus.setText(R.string.status_finished)
+            if (accRecording.timestamps.lastOrNull()?.let { timestamp <= it } == true) return
+            accRecording.add(event.values[0], event.values[1], event.values[2], timestamp)
+            accCount++
+            if (accRecording.getSize() >= Constants.ACCELEROMETER_BATCH_SIZE) {
+                sendAccelerometerData(Constants.ACCELEROMETER_BATCH_SIZE)
+                updateAccelerometerStatus()
             }
-            ppgIrListener.stopTracker()
-            ppgRedListener.stopTracker()
-            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-            isOnDemandMeasurementRunning.set(false)
         }
+
+        override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
     }
 
-    val trackerDataObserver: TrackerDataObserver = object : TrackerDataObserver {
-//        override fun onHeartRateTrackerDataChanged(hrData: HeartRateData) {
-//            this@MainActivity.runOnUiThread(Runnable {
-//                Log.i(tag,"HR Status: " + hrData.status)
-//                when(hrData.status) {
-//                    HeartRateStatus.HR_STATUS_FIND_HR.code -> {
-//                        textHeartRateStatus.text = HeartRateStatus.HR_STATUS_FIND_HR.statusText
-//                        textHeartRate.text = hrData.hr.toString()
-//                        Log.i(tag, "HR: ${hrData.hr}")
-//                        textIbi.text = hrData.ibi.toString()
-//                        Log.i(tag, "IBI: ${hrData.ibi}")
-//                        Log.i(tag, "IBI quality: ${hrData.qIbi}")
-//                        if(hrData.qIbi == 0) {
-//                            textIbiStatus.text = getString(R.string.ibi_status_good)
-//                        }
-//                        else {
-//                            textIbiStatus.text = getString(R.string.ibi_status_bad)
-//                        }
-//                    }
-//                    HeartRateStatus.HR_STATUS_ATTACHED.code -> {
-//                        textHeartRateStatus.text =
-//                            HeartRateStatus.HR_STATUS_ATTACHED.statusText
-//                    }
-//                    HeartRateStatus.HR_STATUS_DETACHED.code -> {
-//                        Log.i(tag, "Detached")
-//                        textHeartRateStatus.text =
-//                            HeartRateStatus.HR_STATUS_DETACHED.statusText
-//                    }
-//                    HeartRateStatus.HR_STATUS_DETECT_MOVE.code -> {
-//                        Log.i(tag, "Movement detected")
-//                        textHeartRateStatus.text =
-//                            HeartRateStatus.HR_STATUS_DETECT_MOVE.statusText
-//                    }
-//                    HeartRateStatus.HR_STATUS_NO_DATA_FLUSH.code -> {
-//                        Log.i(tag, "No data flush")
-//                        textHeartRateStatus.text =
-//                            HeartRateStatus.HR_STATUS_NO_DATA_FLUSH.statusText
-//                    }
-//                    HeartRateStatus.HR_STATUS_LOW_RELIABILITY.code -> {
-//                        Log.i(tag, "Low reliability")
-//                        textHeartRateStatus.text =
-//                            HeartRateStatus.HR_STATUS_LOW_RELIABILITY.statusText
-//                    }
-//                    HeartRateStatus.HR_STATUS_VERY_LOW_RELIABILITY.code -> {
-//                        Log.i(tag, "Very low reliability")
-//                        textHeartRateStatus.text =
-//                            HeartRateStatus.HR_STATUS_VERY_LOW_RELIABILITY.statusText
-//                    }
-//                    else -> {
-//                        Log.i(tag, "None")
-//                        textHeartRateStatus.text = HeartRateStatus.HR_STATUS_NONE.statusText
-//                        textHeartRate.text = getString(R.string.default_value)
-//                    }
-//                }
-//                sendHrData(hrData)
-//                heartRateDataLast = hrData
-//            })
-//        }
-
-        override fun onPpgGreenTrackerDataChanged(ppgGreenData: PpgGreenData) {
-            Log.i(tag,"PPG Green Status: " + ppgGreenData.status)
-            when(ppgGreenData.status) {
-                PpgGreenStatus.PPG_GREEN_STATUS_GOOD.code -> {
-                    Log.i(tag, "Green PPG Data received")
-                    currentPpgGreenDataNumber++
-                    this@MainActivity.runOnUiThread {
-                        textPpgGreenStatus.text = getString(R.string.status_measuring)
-                        textPpgGreen.text = ppgGreenData.ppgValue.toString()
-                        Log.i(tag, "PPG Green : ${ppgGreenData.ppgValue}")
-                        textPpgGreenTimestamp.text = ppgGreenData.timestamp.toString()
-                        Log.i(tag, "PPG Green Timestamp : ${ppgGreenData.timestamp}")
-                        textPpgGreenNumber.text = currentPpgGreenDataNumber.toString()
-                    }
-                }
-                PpgGreenStatus.PPG_GREEN_STATUS_NONE.code -> {
-                    Log.i(tag, "No Green PPG Data")
+    private val messageListener = MessageApi.MessageListener { event ->
+        val path = event.path
+        val bytes = event.data.copyOf()
+        runOnUiThread {
+            if (!destroying) {
+                try {
+                    val message = gson.fromJson(String(bytes, Charsets.UTF_8), Message::class.java)
+                    if (message != null) onMessageArrived(path, message)
+                } catch (error: RuntimeException) {
+                    Log.w(TAG, "Rejected malformed control message", error)
                 }
             }
-//            sendPpgGreenData(ppgGreenData)
-//            ppgGreenDataLast = ppgGreenData
-
-            // store data to datastore
-//            val index = (currentPpgGreenDataNumber - 1) % PPG_GREEN_BATCH_SIZE
-//            ppgGreenDataBatch.ppgValues[index] = ppgGreenData.ppgValue
-//            ppgGreenDataBatch.timestamps[index] = ppgGreenData.timestamp
-//            ppgGreenDataBatch.size++
-            ppgGreenRecording.add(ppgGreenData.ppgValue, ppgGreenData.timestamp)
-            // if current data number reaches multiple of batch size, send the batch
-            if (currentPpgGreenDataNumber % PPG_GREEN_BATCH_SIZE == 0) {
-                sendPpgData(ppgGreenRecording)
-                ppgGreenRecording.clearFromStartUntil(PPG_GREEN_BATCH_SIZE)
-            }
-        }
-
-        override fun onPpgIrTrackerDataChanged(ppgIrData: PpgIrData) {
-            Log.i(tag, "InfraRed PPG Data received")
-            currentPpgIrDataNumber++
-            this@MainActivity.runOnUiThread {
-                textPpgIrStatus.text = getString(R.string.status_measuring)
-                textPpgIr.text = ppgIrData.ppgValue.toString()
-                Log.i(tag, "PPG IR : ${ppgIrData.ppgValue}")
-                textPpgIrTimestamp.text = ppgIrData.timestamp.toString()
-                Log.i(tag, "PPG IR Timestamp : ${ppgIrData.timestamp}")
-                textPpgIrNumber.text = currentPpgIrDataNumber.toString()
-            }
-//            sendPpgIrData(ppgIrData)
-//            ppgIrDataLast = ppgIrData
-
-            // store data to datastore
-//            val index = (currentPpgIrDataNumber - 1) % PPG_GREEN_BATCH_SIZE
-//            ppgIrDataBatch.ppgValues[index] = ppgIrData.ppgValue
-//            ppgIrDataBatch.timestamps[index] = ppgIrData.timestamp
-//            ppgIrDataBatch.size++
-            ppgIrRecording.add(ppgIrData.ppgValue, ppgIrData.timestamp)
-            // if current data number reaches multiple of batch size, send the batch
-            if (currentPpgIrDataNumber % PPG_IR_RED_BATCH_SIZE == 0) {
-                sendPpgData(ppgIrRecording)
-                ppgIrRecording.clearFromStartUntil(PPG_IR_RED_BATCH_SIZE)
-            }
-        }
-
-        override fun onPpgRedTrackerDataChanged(ppgRedData: PpgRedData) {
-            Log.i(tag, "Red PPG Data received")
-            currentPpgRedDataNumber++
-            this@MainActivity.runOnUiThread {
-                textPpgRedStatus.text = getString(R.string.status_measuring)
-                textPpgRed.text = ppgRedData.ppgValue.toString()
-                Log.i(tag, "PPG Red : ${ppgRedData.ppgValue}")
-                textPpgRedTimestamp.text = ppgRedData.timestamp.toString()
-                Log.i(tag, "PPG Red Timestamp : ${ppgRedData.timestamp}")
-                textPpgRedNumber.text = currentPpgRedDataNumber.toString()
-            }
-//            sendPpgRedData(ppgRedData)
-//            ppgRedDataLast = ppgRedData
-
-            // store data to datastore
-//            val index = (currentPpgRedDataNumber - 1) % PPG_GREEN_BATCH_SIZE
-//            ppgRedDataBatch.ppgValues[index] = ppgRedData.ppgValue
-//            ppgRedDataBatch.timestamps[index] = ppgRedData.timestamp
-//            ppgRedDataBatch.size++
-            ppgRedRecording.add(ppgRedData.ppgValue, ppgRedData.timestamp)
-            // if current data number reaches multiple of batch size, send the batch
-            if (currentPpgRedDataNumber % PPG_IR_RED_BATCH_SIZE == 0) {
-                sendPpgData(ppgRedRecording)
-                ppgRedRecording.clearFromStartUntil(PPG_IR_RED_BATCH_SIZE)
-            }
-        }
-
-        override fun onError(errorResourceId: Int) {
-            runOnUiThread {
-                Toast.makeText(
-                    applicationContext,
-                    getString(errorResourceId),
-                    Toast.LENGTH_LONG
-                ).show()
-            }
         }
     }
 
-    private val connectionObserver: ConnectionObserver = object : ConnectionObserver {
+    private val connectionObserver = object : ConnectionObserver {
         override fun onConnectionResult(stringResourceId: Int) {
             runOnUiThread {
-                Toast.makeText(
-                    applicationContext, getString(stringResourceId), Toast.LENGTH_LONG
-                ).show()
-            }
-            if (stringResourceId != R.string.ConnectedToHs) {
-                finish()
-            }
-
-            connected = true
-            TrackerDataNotifier.instance?.addObserver(trackerDataObserver)
-//            heartRateListener = HeartRateListener()
-            ppgGreenListener = PpgGreenListener()
-            ppgIrListener = PpgIrListener()
-            ppgRedListener = PpgRedListener()
-
-//            connectionManager.initHeartRate(heartRateListener)
-            connectionManager.initPpgGreen(ppgGreenListener)
-            connectionManager.initPpgIr(ppgIrListener)
-            connectionManager.initPpgRed(ppgRedListener)
-
-            // commented out because tracker started at other point of the app
-            //heartRateListener.startTracker()
-        }
-
-        override fun onError(e: HealthTrackerException?) {
-            if (e != null) {
-                if (e.errorCode == HealthTrackerException.OLD_PLATFORM_VERSION
-                    || e.errorCode == HealthTrackerException.PACKAGE_NOT_INSTALLED)
-                    runOnUiThread {
-                        Toast.makeText(
-                            applicationContext,
-                            getString(R.string.HealthPlatformVersionIsOutdated),
-                            Toast.LENGTH_LONG
-                        ).show()
-                    }
-            }
-            if (e != null) {
-                if (e.hasResolution()) {
-                    e.resolve(this@MainActivity)
-                } else {
-                    runOnUiThread {
-                        Toast.makeText(
-                            applicationContext, getString(R.string.ConnectionError), Toast.LENGTH_LONG
-                        ).show()
-                    }
-                    Log.e(tag, "Could not connect to Health Tracking Service: " + e.message)
+                if (destroying) return@runOnUiThread
+                if (stringResourceId != R.string.ConnectedToHs) {
+                    ppgAvailable = false
+                    ppgListener.stopTracker()
+                    showPpgError(stringResourceId)
+                    return@runOnUiThread
+                }
+                try {
+                    ppgAvailable = connectionManager.initPpg(ppgListener)
+                    if (currentState == ActivityCode.START_ACTIVITY) startPpg()
+                    if (!ppgAvailable) showPpgError(R.string.NoContinuousPpgSupport)
+                } catch (error: RuntimeException) {
+                    ppgAvailable = false
+                    Log.e(TAG, "PPG capability setup failed", error)
+                    showPpgError(R.string.ConnectionError)
                 }
             }
-            finish()
+        }
+
+        override fun onError(error: HealthTrackerException?) {
+            runOnUiThread {
+                ppgAvailable = false
+                ppgListener.stopTracker()
+                showPpgError(R.string.ConnectionError)
+                if (error?.hasResolution() == true) error.resolve(this@MainActivity)
+            }
         }
     }
-
-    private class MyAmbientCallback : AmbientModeSupport.AmbientCallback() {
-        override fun onEnterAmbient(ambientDetails: Bundle?) {
-            super.onEnterAmbient(ambientDetails)
-            Log.i("Wear: Ambient","Entered ambient mode")
-        }
-
-        override fun onExitAmbient() {
-            super.onExitAmbient()
-            Log.i("Wear: Ambient","Exited ambient mode")
-        }
-    }
-
-    override fun getAmbientCallback(): AmbientModeSupport.AmbientCallback = MyAmbientCallback()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        Log.d("Wear","onCreate")
-
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
-
-        ambientController = AmbientModeSupport.attach(this)
-
-        message.sender = Entity.WEAR_APP
-
-        currentPpgGreenDataNumber = 0
-        currentPpgIrDataNumber = 0
-        currentPpgRedDataNumber = 0
-
-        uiUpdateThread = Thread {}
-        uiUpdateThread.start()
-
-        // requests permission
-//        if (ActivityCompat.checkSelfPermission(
-//                applicationContext,
-//                getString(R.string.BodySensors)
-//            ) == PackageManager.PERMISSION_DENIED
-//        ) requestPermissions(
-//            arrayOf(
-//                Manifest.permission.BODY_SENSORS
-//            ), 0
-//        )
-//        else {
-//            createConnectionManager()
-//        }
-        if (!allPermissionsGranted()) {
-            ActivityCompat.requestPermissions(
-                this, REQUIRED_PERMISSIONS, REQUEST_CODE_PERMISSIONS
-            )
-        } else createConnectionManager()
-
-        // set UI vars
-        textStatus = binding.statusMsg
-        textTip = binding.message
-//        hrContainer = binding.heartRateContainer
-//        textHeartRate = binding.heartRate
-//        textHeartRateStatus = binding.heartRateStatus
-//        textIbi = binding.ibi
-//        textIbiStatus = binding.ibiStatus
-        ppgGreenContainer = binding.ppgGreenContainer
-        textPpgGreenStatus = binding.ppgGreenStatus
-        textPpgGreenNumber = binding.ppgGreenNumber
-        textPpgGreen = binding.ppgGreen
-        textPpgGreenTimestamp = binding.ppgGreenTimestamp
-        ppgIrContainer = binding.ppgIrContainer
-        textPpgIrStatus = binding.ppgIrStatus
-        textPpgIrNumber = binding.ppgIrNumber
-        textPpgIr = binding.ppgIr
-        textPpgIrTimestamp = binding.ppgIrTimestamp
-        ppgRedContainer = binding.ppgRedContainer
-        textPpgRedStatus = binding.ppgRedStatus
-        textPpgRedNumber = binding.ppgRedNumber
-        textPpgRed = binding.ppgRed
-        textPpgRedTimestamp = binding.ppgRedTimestamp
-
-        // set initial UI
-        textStatus.text = getString(R.string.default_status)
-        textTip.text = getString(R.string.message_placeholder)
-//        textHeartRate.text = getString(R.string.default_value)
-//        textHeartRateStatus.text = getString(R.string.default_status)
-//        textIbi.text = getString(R.string.default_value)
-//        textIbiStatus.text = getString(R.string.default_status)
-        textPpgGreenStatus.text = getString(R.string.default_status)
-        textPpgGreenNumber.text = getString(R.string.default_value)
-        textPpgGreen.text = getString(R.string.default_value)
-        textPpgGreenTimestamp.text = getString(R.string.default_value)
-        textPpgIrStatus.text = getString(R.string.default_status)
-        textPpgIrNumber.text = getString(R.string.default_value)
-        textPpgIr.text = getString(R.string.default_value)
-        textPpgIrTimestamp.text = getString(R.string.default_value)
-        textPpgRedStatus.text = getString(R.string.default_status)
-        textPpgRedNumber.text = getString(R.string.default_value)
-        textPpgRed.text = getString(R.string.default_value)
-        textPpgRedTimestamp.text = getString(R.string.default_value)
-
-        textTip.visibility = View.VISIBLE
-//        hrContainer.visibility = View.GONE
-        ppgGreenContainer.visibility = View.GONE
-        ppgIrContainer.visibility = View.GONE
-        ppgRedContainer.visibility = View.GONE
-
-        // set clickables
-//        hrContainer.setOnClickListener { // hide the HR container
-//            runOnUiThread {
-//                hrContainer.visibility = View.GONE
-//            }
-//        }
-//        ppgGreenContainer.setOnClickListener { // show the HR container
-//            runOnUiThread {
-//                hrContainer.visibility = View.VISIBLE
-//            }
-//        }
-
-        // Initialize Android accelerometer sensor
-        sensorManager = getSystemService(SENSOR_SERVICE) as? SensorManager
-        accelerometerSensor = sensorManager?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
-
-        // build Google API Client with access to Wearable API
+        AmbientModeSupport.attach(this)
+        sensorManager = getSystemService(SensorManager::class.java)
+        accelerometer = sensorManager?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+        connectionManager = ConnectionManager(connectionObserver)
         client = GoogleApiClient.Builder(this)
-            .addConnectionCallbacks(this)
-            .addApi(Wearable.API)
-            .build()
+            .addConnectionCallbacks(this).addApi(Wearable.API).build()
         client.connect()
-        Log.d("Wear","build Google API passed")
+        updateAccelerometerStatus()
+        if (hasBodySensorPermission()) connectSamsung()
+        else ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.BODY_SENSORS), REQUEST_PERMISSIONS)
     }
 
-    /**
-     * Invalidate the app status by checking all
-     * tracker is currently running or not.
-     * If all tracker is not running, invalidate app
-     * and update view accordingly.
-     *
-     * @return A boolean value. True if invalidation
-     * occurs. False if nothing done.
-     */
-    private fun invalidateAppStatus(): Boolean {
-        Log.d("Wear", "invalidateAppStatus\n" +
-                "PpgGreen Tracking: ${ppgGreenListener.isTracking()}\n" +
-                "PpgIR Tracking: ${ppgIrListener.isTracking()}\n" +
-                "PpgRed Tracking: ${ppgRedListener.isTracking()}\n")
-        return if (!ppgGreenListener.isTracking() &&
-            !ppgIrListener.isTracking() &&
-            !ppgRedListener.isTracking()) {
-            stopAccelerometerTracker()
-            runOnUiThread {
-                textStatus.text = getString(R.string.status_stopped)
-                textPpgGreenStatus.text = getString(R.string.status_stopped)
-                textPpgIrStatus.text = getString(R.string.status_stopped)
-                textPpgRedStatus.text = getString(R.string.status_stopped)
-            }
-
-            // stop foreground service
-            MainService.stopService(this)
-
-//            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-
-            true
-        } else false
-    }
-
-    override fun onDestroy() {
-        Log.d(tag, "onDestroy")
-        super.onDestroy()
-        stopAccelerometerTracker()
-        if (connected) {
-//            heartRateListener.stopTracker()
-            ppgGreenListener.stopTracker()
-            ppgIrListener.stopTracker()
-            ppgRedListener.stopTracker()
-            TrackerDataNotifier.instance?.removeObserver(trackerDataObserver)
-            connectionManager.disconnect()
+    private fun connectSamsung() {
+        try {
+            connectionManager.connect(applicationContext)
+        } catch (error: RuntimeException) {
+            Log.e(TAG, "Samsung service unavailable", error)
+            showPpgError(R.string.ConnectionError)
         }
     }
 
-    private fun createConnectionManager() {
-        try {
-            connectionManager = ConnectionManager(connectionObserver)
-            connectionManager.connect(applicationContext)
-        } catch (t: Throwable) {
-            Log.e(tag, t.message!!)
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQUEST_PERMISSIONS) {
+            if (hasBodySensorPermission()) connectSamsung()
+            else showPpgError(R.string.NoPermission)
         }
     }
 
     override fun onConnected(bundle: Bundle?) {
-        Wearable.NodeApi.getConnectedNodes(client).setResultCallback {
-            connectedNode = it.nodes
-            Log.d("Wear","Node connected")
-
-            // prompt to reset phone app state
-            // onConnected is not immediately run when onCreate
-            // so the prompt should be executed on connection
-            message.code = ActivityCode.STOP_ACTIVITY
-            message.content = "Reset Phone App State"
-            sendMessage(message, MessagePath.COMMAND)
-            Log.d("Wear","prompt reset passed")
-        }
-        Wearable.MessageApi.addListener(client) { messageEvent ->
-            currentMessage = Gson().fromJson(String(messageEvent.data), Message::class.java)
-            onMessageArrived(messageEvent.path)
-        }
+        Wearable.MessageApi.addListener(client, messageListener)
+        sendState()
+        drainUploads()
     }
 
     override fun onConnectionSuspended(code: Int) {
-        Log.w("Wear", "Google Api Client connection suspended!")
+        Log.w(TAG, "Wearable transport suspended; unsent batches retained")
     }
 
-    private fun onMessageArrived(messagePath: String) {
-        // Guard: Samsung Health listeners may not be initialized yet
-        if (!connected) {
-            Log.w("Wear", "onMessageArrived: Ignoring message on path '$messagePath' " +
-                    "— Samsung Health not connected yet")
+    private fun onMessageArrived(path: String, message: Message) {
+        when (path) {
+            MessagePath.COMMAND -> when (message.code) {
+                ActivityCode.START_ACTIVITY -> startSession(message.sessionId)
+                ActivityCode.PAUSE_ACTIVITY, ActivityCode.STOP_ACTIVITY -> {
+                    if (message.sessionId != sessionId) return
+                    stopTrackers()
+                    flushRemainingData()
+                    currentState = message.code
+                    binding.statusMsg.setText(if (currentState == ActivityCode.PAUSE_ACTIVITY) {
+                        R.string.status_paused
+                    } else R.string.status_stopped)
+                    updatePpgStatuses()
+                    updateAccelerometerStatus()
+                    sendState()
+                    if (currentState == ActivityCode.PAUSE_ACTIVITY) {
+                        MainService.startService(this, "Paused")
+                    } else if (uploads.isEmpty()) MainService.stopService(this)
+                }
+            }
+            MessagePath.REQUEST -> sendState()
+            MessagePath.INFO -> Unit
+            MessagePath.DATA_PPG_GREEN, MessagePath.DATA_PPG_IR, MessagePath.DATA_PPG_RED -> {
+                if (currentState != ActivityCode.START_ACTIVITY || message.sessionId != sessionId) return
+                val type = when (path) {
+                    MessagePath.DATA_PPG_GREEN -> PpgType.PPG_GREEN
+                    MessagePath.DATA_PPG_IR -> PpgType.PPG_IR
+                    else -> PpgType.PPG_RED
+                }
+                if (message.code == ActivityCode.STOP_ACTIVITY ||
+                    (message.extraCode == TOGGLE_ACTIVITY && type in ppgListener.channels)) {
+                    ppgListener.channels.remove(type)
+                    sendPpgData(type, recordings.getValue(type).getSize() ?: 0)
+                } else if (message.code == ActivityCode.START_ACTIVITY) {
+                    ppgListener.channels.add(type)
+                }
+                if (ppgListener.channels.isEmpty()) ppgListener.stopTracker() else startPpg()
+                updatePpgStatuses()
+                sendState()
+            }
+        }
+    }
+
+    private fun startSession(id: Long) {
+        if (id <= 0L) {
+            Toast.makeText(this, R.string.UpdateBothApps, Toast.LENGTH_LONG).show()
             return
         }
-        val it = currentMessage ?: return
-        when (messagePath) {
-            MessagePath.COMMAND -> {
-                when (it.code) {
-                        ActivityCode.START_ACTIVITY -> { // start all tracker
-                            runOnUiThread {
-//                                hrContainer.visibility = View.VISIBLE
-                                ppgGreenContainer.visibility = View.VISIBLE
-                                ppgIrContainer.visibility = View.VISIBLE
-                                ppgRedContainer.visibility = View.VISIBLE
-                                textTip.visibility = View.GONE
-                                textStatus.text = getString(R.string.status_running)
-                            }
-
-                            currentPpgGreenDataNumber = 0
-                            currentPpgIrDataNumber = 0
-                            currentPpgRedDataNumber = 0
-                            currentAccDataNumber = 0
-                            ppgGreenRecording.clear()
-                            ppgIrRecording.clear()
-                            ppgRedRecording.clear()
-                            accRecording.clear()
-
-                            switchState(1)
-//                            heartRateListener.startTracker()
-//                            ppgGreenListener.startTracker()
-//                            ppgIrListener.startTracker()
-//                            ppgRedListener.startTracker()
-                            startTracker(ppgGreenListener)
-                            startTracker(ppgIrListener)
-                            startTracker(ppgRedListener)
-                            startAccelerometerTracker()
-                        }
-                        ActivityCode.STOP_ACTIVITY -> { // stop all tracker
-                            // Flush any remaining buffered data before stopping
-                            flushRemainingData()
-
-                            runOnUiThread {
-                                textStatus.text = getString(R.string.status_stopped)
-                                textPpgGreenStatus.text = getString(R.string.status_stopped)
-                                textPpgIrStatus.text = getString(R.string.status_stopped)
-                                textPpgRedStatus.text = getString(R.string.status_stopped)
-                            }
-
-                            switchState(0)
-                            ppgGreenListener.stopTracker()
-                            ppgIrListener.stopTracker()
-                            ppgRedListener.stopTracker()
-                            stopAccelerometerTracker()
-                        }
-                        ActivityCode.PAUSE_ACTIVITY -> { // pause all trackers
-                            runOnUiThread {
-                                textStatus.text = getString(R.string.status_paused)
-                                textPpgGreenStatus.text = getString(R.string.status_paused)
-                                textPpgIrStatus.text = getString(R.string.status_paused)
-                                textPpgRedStatus.text = getString(R.string.status_paused)
-                            }
-
-                            ppgGreenListener.stopTracker()
-                            ppgIrListener.stopTracker()
-                            ppgRedListener.stopTracker()
-                            stopAccelerometerTracker()
-
-                            // Notify Phone of paused state
-                            switchState(ActivityCode.PAUSE_ACTIVITY)
-                        }
-                        ActivityCode.DO_NOTHING -> {
-                            runOnUiThread {
-                                Toast.makeText(
-                                    applicationContext,
-                                    getString(R.string.no_content),
-                                    Toast.LENGTH_LONG
-                                ).show()
-                            }
-                        }
-                        else -> {}
-                    }
-                }
-                MessagePath.REQUEST -> {
-                    if (it.code == ActivityCode.START_ACTIVITY) { // receive state request
-                        Log.i("Wear","A request received!")
-                        switchState(currentState)
-                    }
-                }
-                MessagePath.INFO -> {
-                    Log.i(tag, "Received INFO message: ${it.content}")
-                }
-                MessagePath.DATA_PPG_GREEN -> {
-                    if (it.code == ActivityCode.START_ACTIVITY) { // start tracker
-                        runOnUiThread {
-                            ppgGreenContainer.visibility = View.VISIBLE
-                            textTip.visibility = View.GONE
-                            textStatus.text = getString(R.string.status_running)
-                        }
-
-                        if (it.extraCode == TOGGLE_ACTIVITY) { // if toggle is instructed
-                            toggleTracker(ppgGreenListener)
-                            invalidateAppStatus()
-                            return
-                        }
-
-                        startTracker(ppgGreenListener)
-                    }
-                    else if (it.code == ActivityCode.STOP_ACTIVITY) { // stop tracker
-                        ppgGreenListener.stopTracker()
-                        invalidateAppStatus()
-                    }
-                }
-                MessagePath.DATA_PPG_IR -> {
-                    if (it.code == ActivityCode.START_ACTIVITY) { // start tracker
-                        runOnUiThread {
-                            ppgIrContainer.visibility = View.VISIBLE
-                            textTip.visibility = View.GONE
-                            textStatus.text = getString(R.string.status_running)
-                        }
-
-                        if (it.extraCode == TOGGLE_ACTIVITY) { // if toggle instructed
-                            toggleTracker(ppgIrListener)
-                            if (!ppgIrListener.isTracking()) runOnUiThread {
-                                textPpgIrStatus.text = getString(R.string.status_stopped)
-                            }
-                            invalidateAppStatus()
-                            return
-                        }
-
-                        startTracker(ppgIrListener)
-                    }
-                    else if (it.code == ActivityCode.STOP_ACTIVITY) { // stop tracker
-                        ppgIrListener.stopTracker()
-                        if (!ppgIrListener.isTracking()) runOnUiThread {
-                            textPpgIrStatus.text = getString(R.string.status_stopped)
-                        }
-                        invalidateAppStatus()
-                    }
-                }
-                MessagePath.DATA_PPG_RED -> {
-                    if (it.code == ActivityCode.START_ACTIVITY) { // start tracker
-                        runOnUiThread {
-                            ppgRedContainer.visibility = View.VISIBLE
-                            textTip.visibility = View.GONE
-                            textStatus.text = getString(R.string.status_running)
-                        }
-
-                        if (it.extraCode == TOGGLE_ACTIVITY) { // if toggle instructed
-                            toggleTracker(ppgRedListener)
-                            if (!ppgRedListener.isTracking()) runOnUiThread {
-                                textPpgRedStatus.text = getString(R.string.status_stopped)
-                            }
-                            invalidateAppStatus()
-                            return
-                        }
-
-                        startTracker(ppgRedListener)
-                    }
-                    else if (it.code == ActivityCode.STOP_ACTIVITY) { // stop tracker
-                        ppgRedListener.stopTracker()
-                        if (!ppgRedListener.isTracking()) runOnUiThread {
-                            textPpgRedStatus.text = getString(R.string.status_stopped)
-                        }
-                        invalidateAppStatus()
-                    }
-                }
-                else -> {}
-            }
+        if (id == sessionId && currentState == ActivityCode.START_ACTIVITY) return
+        if (id != sessionId) {
+            stopTrackers()
+            flushRemainingData()
+            recordings.values.forEach { it.clear() }
+            counts.keys.forEach { counts[it] = 0 }
+            accRecording.clear()
+            accCount = 0
+            sessionId = id
+            batchNumber = 0L
+            ppgListener.channels.clear()
+            ppgListener.channels.addAll(PpgType.values())
+        }
+        try {
+            MainService.startService(this, "Recording sensors")
+        } catch (error: RuntimeException) {
+            Log.e(TAG, "Foreground recording service could not start", error)
+            binding.statusMsg.setText(R.string.status_failed)
+            currentState = ActivityCode.STOP_ACTIVITY
+            sendState()
+            return
+        }
+        currentState = ActivityCode.START_ACTIVITY
+        startAccelerometerTracker()
+        startPpg()
+        binding.statusMsg.setText(R.string.status_running)
+        updatePpgStatuses()
+        sendState()
     }
 
-    private fun sendMessage(message: Message, path: String) {
-        val gson = Gson()
-        connectedNode?.forEach { node ->
-            val bytes = gson.toJson(message).toByteArray()
-            Wearable.MessageApi.sendMessage(client, node.id, path, bytes)
-            Log.i("Wear","Message sent!")
-            Log.i("Wear","$message")
+    private fun startAccelerometerTracker() {
+        if (isAccTracking) return
+        accUnixAnchorMs = System.currentTimeMillis()
+        accElapsedAnchorNanos = SystemClock.elapsedRealtimeNanos()
+        isAccTracking = try {
+            accelerometer != null && sensorManager?.registerListener(
+                accelerometerListener, accelerometer, 40_000
+            ) == true
+        } catch (error: RuntimeException) {
+            Log.e(TAG, "Accelerometer registration failed", error)
+            false
+        }
+        updateAccelerometerStatus()
+    }
+
+    private fun startPpg() {
+        if (ppgAvailable && hasBodySensorPermission() && ppgListener.channels.isNotEmpty()) {
+            ppgListener.startTracker()
         }
     }
 
-//    private fun sendHrData(hrData: HeartRateData) {
-//        val heartData = HeartData(
-//            hrData.hr,
-//            hrData.ibi,
-//            LocalDateTime.now().format(DateTimeFormatter.ISO_DATE_TIME).toString()
-//        )
-//        val bytes = Gson().toJson(heartData).toByteArray()
-//        Wearable.DataApi.putDataItem(client,
-//            PutDataRequest.create(MessagePath.DATA_HR).setData(bytes).setUrgent()
-//        )
-//        Log.i("Wear","Heart Data sent via DataApi!")
-//    }
+    private fun stopTrackers() {
+        ppgListener.stopTracker()
+        isAccTracking = false
+        sensorManager?.unregisterListener(accelerometerListener)
+    }
 
-    private fun sendPpgData(ppgRecording: PpgRecording, actualSize: Int? = null) {
-        val path: String
-        val windowSize: Int
-
-        when (ppgRecording.ppgType) {
-            PpgType.PPG_GREEN -> {
-                path = MessagePath.DATA_PPG_GREEN
-                windowSize = actualSize ?: PPG_GREEN_BATCH_SIZE
-            }
-            PpgType.PPG_IR -> {
-                path = MessagePath.DATA_PPG_IR
-                windowSize = actualSize ?: PPG_IR_RED_BATCH_SIZE
-            }
-            PpgType.PPG_RED -> {
-                path = MessagePath.DATA_PPG_RED
-                windowSize = actualSize ?: PPG_IR_RED_BATCH_SIZE
-            }
+    private fun recordPpg(type: PpgType, value: Int, timestamp: Long) {
+        if (currentState != ActivityCode.START_ACTIVITY) return
+        val recording = recordings.getValue(type)
+        if (recording.timestamps.lastOrNull()?.let { timestamp <= it } == true) return
+        recording.add(value, timestamp)
+        counts[type] = counts.getValue(type) + 1
+        val fields = when (type) {
+            PpgType.PPG_GREEN -> listOf(binding.ppgGreen, binding.ppgGreenTimestamp, binding.ppgGreenNumber, binding.ppgGreenStatus)
+            PpgType.PPG_IR -> listOf(binding.ppgIr, binding.ppgIrTimestamp, binding.ppgIrNumber, binding.ppgIrStatus)
+            PpgType.PPG_RED -> listOf(binding.ppgRed, binding.ppgRedTimestamp, binding.ppgRedNumber, binding.ppgRedStatus)
         }
-
-        // prep the PpgData
-        val ppgData = PpgData(windowSize, ppgRecording.ppgType)
-        for (i in 0 until windowSize) {
-            ppgData.ppgValues[i] = ppgRecording.values[i]
-            ppgData.timestamps[i] = ppgRecording.timestamps[i]
-            ppgData.size++
+        fields[0].text = value.toString()
+        fields[1].text = timestamp.toString()
+        fields[2].text = counts.getValue(type).toString()
+        fields[3].setText(R.string.status_measuring)
+        if ((recording.getSize() ?: 0) >= Constants.PPG_GREEN_BATCH_SIZE) {
+            sendPpgData(type, Constants.PPG_GREEN_BATCH_SIZE)
         }
-        Log.d("Wear: Sending PPG","Preparing to send PPG Data\n" +
-                "PPG_GREEN_BATCH_SIZE: $PPG_GREEN_BATCH_SIZE\n" +
-                "PPG_GREEN_SAMPLE_RATE: $PPG_GREEN_SAMPLE_RATE\n" +
-                "PPG_IR_RED_BATCH_SIZE: $PPG_IR_RED_BATCH_SIZE\n" +
-                "PPG_IR_RED_SAMPLE_RATE: $PPG_IR_RED_SAMPLE_RATE\n" +
-                "PPG_IR_RED_BATCH_TICK_RATE: $PPG_IR_RED_BATCH_TICK_RATE")
+    }
 
-        // send it
-        val bytes = Gson().toJson(ppgData).toByteArray()
-        Wearable.DataApi.putDataItem(client,
-            PutDataRequest.create(path).setData(bytes).setUrgent()
+    private fun sendPpgData(type: PpgType, size: Int) {
+        if (size <= 0) return
+        val recording = recordings.getValue(type)
+        val batch = PpgData(
+            recording.values.take(size).toIntArray(), recording.timestamps.take(size).toLongArray(),
+            type, size, size, sessionId
         )
-        Log.i("Wear","PPG Data sent via DataApi!\n$ppgData")
+        val path = when (type) {
+            PpgType.PPG_GREEN -> MessagePath.DATA_PPG_GREEN
+            PpgType.PPG_IR -> MessagePath.DATA_PPG_IR
+            PpgType.PPG_RED -> MessagePath.DATA_PPG_RED
+        }
+        queueBatch(path, batch)
+        recording.clearFromStartUntil(size)
     }
 
-    /**
-     * Flushes any remaining buffered PPG data that hasn't
-     * reached a full batch size. Called before stopping trackers
-     * to prevent data loss.
-     */
+    private fun sendAccelerometerData(size: Int) {
+        if (size <= 0) return
+        val batch = AccelerometerData(
+            accRecording.xValues.take(size).toFloatArray(), accRecording.yValues.take(size).toFloatArray(),
+            accRecording.zValues.take(size).toFloatArray(), accRecording.timestamps.take(size).toLongArray(),
+            size, size, sessionId
+        )
+        queueBatch(MessagePath.DATA_ACCELEROMETER, batch)
+        accRecording.clearFromStartUntil(size)
+    }
+
     private fun flushRemainingData() {
-        val greenSize = ppgGreenRecording.getSize() ?: 0
-        if (greenSize > 0) {
-            sendPpgData(ppgGreenRecording, greenSize)
-            ppgGreenRecording.clearFromStartUntil(greenSize)
-            Log.i(tag, "Flushed $greenSize remaining PPG Green data points")
+        for ((type, recording) in recordings) sendPpgData(type, recording.getSize() ?: 0)
+        sendAccelerometerData(accRecording.getSize())
+    }
+
+    private fun queueBatch(path: String, batch: Any) {
+        uploads.addLast(Pair("$path/$sessionId/${batchNumber++}", gson.toJson(batch).toByteArray(Charsets.UTF_8)))
+        drainUploads()
+    }
+
+    private fun drainUploads() {
+        if (uploadInFlight || !client.isConnected) return
+        if (uploads.isEmpty()) {
+            if (currentState == ActivityCode.STOP_ACTIVITY || currentState == ActivityCode.DO_NOTHING) {
+                MainService.stopService(this)
+            }
+            if (destroying) client.disconnect()
+            return
         }
-        val irSize = ppgIrRecording.getSize() ?: 0
-        if (irSize > 0) {
-            sendPpgData(ppgIrRecording, irSize)
-            ppgIrRecording.clearFromStartUntil(irSize)
-            Log.i(tag, "Flushed $irSize remaining PPG IR data points")
-        }
-        val redSize = ppgRedRecording.getSize() ?: 0
-        if (redSize > 0) {
-            sendPpgData(ppgRedRecording, redSize)
-            ppgRedRecording.clearFromStartUntil(redSize)
-            Log.i(tag, "Flushed $redSize remaining PPG Red data points")
-        }
-        val accSize = accRecording.getSize()
-        if (accSize > 0) {
-            sendAccelerometerData(accRecording, accSize)
-            accRecording.clearFromStartUntil(accSize)
-            Log.i(tag, "Flushed $accSize remaining Accelerometer data points")
+        uploadInFlight = true
+        val batch = uploads.first
+        Wearable.DataApi.putDataItem(client, PutDataRequest.create(batch.first).setData(batch.second).setUrgent())
+            .setResultCallback { result ->
+                uploadInFlight = false
+                if (result.status.isSuccess) {
+                    uploads.removeFirst()
+                    drainUploads()
+                } else {
+                    Log.e(TAG, "Batch upload failed; retained for retry: ${result.status.statusCode}")
+                    mainHandler.postDelayed({ drainUploads() }, 1000L)
+                }
+            }
+    }
+
+    private fun sendState() {
+        if (!client.isConnected) return
+        val mask = if (ppgListener.isTracking()) ppgListener.channels.sumOf { it.mask } else 0
+        val state = Message(Entity.WEAR_APP, "Watch sensor state", currentState, mask, sessionId,
+            intArrayOf(counts.getValue(PpgType.PPG_GREEN), counts.getValue(PpgType.PPG_IR),
+                counts.getValue(PpgType.PPG_RED), accCount))
+        val bytes = gson.toJson(state).toByteArray(Charsets.UTF_8)
+        Wearable.NodeApi.getConnectedNodes(client).setResultCallback { nodes ->
+            for (node in nodes.nodes) Wearable.MessageApi.sendMessage(client, node.id, MessagePath.INFO, bytes)
         }
     }
 
-//    private fun sendPpgData(ppgData: PpgData) {
-//        val path = when (ppgData.ppgType) {
-//            PpgType.PPG_GREEN -> MessagePath.DATA_PPG_GREEN
-//            PpgType.PPG_IR -> MessagePath.DATA_PPG_IR
-//            PpgType.PPG_RED -> MessagePath.DATA_PPG_RED
-//        }
-//        val bytes = Gson().toJson(ppgData).toByteArray()
-//        Wearable.DataApi.putDataItem(client,
-//            PutDataRequest.create(path).setData(bytes).setUrgent()
-//        )
-//        Log.i("Wear","PPG Data sent via DataApi!\n$ppgData")
-//    }
+    private fun showPpgError(resource: Int) {
+        Toast.makeText(this, resource, Toast.LENGTH_LONG).show()
+        binding.ppgGreenStatus.setText(resource)
+        binding.ppgIrStatus.setText(resource)
+        binding.ppgRedStatus.setText(resource)
+        sendState()
+    }
 
-//    private fun sendPpgGreenData(ppgGreenData: PpgGreenData) {
-//        val ppgData = PpgData(
-//            currentPpgGreenDataNumber,
-//            ppgGreenData.ppgValue,
-//            ppgGreenData.timestamp,
-//            PpgType.PPG_GREEN
-//        )
-//        val bytes = Gson().toJson(ppgData).toByteArray()
-//        Wearable.DataApi.putDataItem(client,
-//            PutDataRequest.create(MessagePath.DATA_PPG_GREEN).setData(bytes).setUrgent()
-//        )
-//        Log.i("Wear","PPG Green Data sent via DataApi!")
-//    }
-//
-//    private fun sendPpgIrData(ppgIrData: PpgIrData) {
-//        val ppgData = PpgData(
-//            currentPpgIrDataNumber,
-//            ppgIrData.ppgValue,
-//            ppgIrData.timestamp,
-//            PpgType.PPG_IR
-//        )
-//        val bytes = Gson().toJson(ppgData).toByteArray()
-//        Wearable.DataApi.putDataItem(client,
-//            PutDataRequest.create(MessagePath.DATA_PPG_IR).setData(bytes).setUrgent()
-//        )
-//        Log.i("Wear","PPG IR Data sent via DataApi!")
-//    }
-//
-//    private fun sendPpgRedData(ppgRedData: PpgRedData) {
-//        val ppgData = PpgData(
-//            currentPpgRedDataNumber,
-//            ppgRedData.ppgValue,
-//            ppgRedData.timestamp,
-//            PpgType.PPG_RED
-//        )
-//        val bytes = Gson().toJson(ppgData).toByteArray()
-//        Wearable.DataApi.putDataItem(client,
-//            PutDataRequest.create(MessagePath.DATA_PPG_RED).setData(bytes).setUrgent()
-//        )
-//        Log.i("Wear","PPG Red Data sent via DataApi!")
-//    }
-
-    private fun toggleTracker(listener: Listener) {
-//        Log.d("Wear", "toggleTracker() Toggling $listener")
-        when (listener) {
-            ppgGreenListener -> {
-//                Log.d("Wear", "toggleTracker()\n" +
-//                        "PPG Green Tracking: ${ppgGreenListener.isTracking()}")
-                if (ppgGreenListener.isTracking()) ppgGreenListener.stopTracker()
-                else startTracker(ppgGreenListener)
-//                Log.d("Wear", "toggleTracker() after\n" +
-//                        "PPG Green Tracking: ${ppgGreenListener.isTracking()}")
-            }
-            ppgIrListener -> {
-//                Log.d("Wear", "toggleTracker()\n" +
-//                        "PPG IR Tracking: ${ppgIrListener.isTracking()}")
-                if (ppgIrListener.isTracking()) ppgIrListener.stopTracker()
-                else startTracker(ppgIrListener)
-//                Log.d("Wear", "toggleTracker() after\n" +
-//                        "PPG IR Tracking: ${ppgIrListener.isTracking()}")
-            }
-            ppgRedListener -> {
-//                Log.d("Wear", "toggleTracker()\n" +
-//                        "PPG Red Tracking: ${ppgRedListener.isTracking()}")
-                if (ppgRedListener.isTracking()) ppgRedListener.stopTracker()
-                else startTracker(ppgRedListener)
-//                Log.d("Wear", "toggleTracker() after\n" +
-//                        "PPG Red Tracking: ${ppgRedListener.isTracking()}")
-            }
+    private fun updatePpgStatuses() {
+        binding.ppgGreenContainer.visibility = View.VISIBLE
+        binding.ppgIrContainer.visibility = View.VISIBLE
+        binding.ppgRedContainer.visibility = View.VISIBLE
+        val statuses = listOf(binding.ppgGreenStatus, binding.ppgIrStatus, binding.ppgRedStatus)
+        for (type in PpgType.values()) {
+            statuses[type.ordinal].setText(when {
+                !ppgAvailable || !hasBodySensorPermission() -> R.string.NoContinuousPpgSupport
+                currentState == ActivityCode.PAUSE_ACTIVITY -> R.string.status_paused
+                currentState != ActivityCode.START_ACTIVITY || type !in ppgListener.channels -> R.string.status_stopped
+                else -> R.string.status_waiting
+            })
         }
     }
 
-    private fun startTracker(listener: Listener) {
-        when (listener) {
-            ppgGreenListener -> {
-                ppgGreenListener.startTracker()
-            }
-            ppgIrListener -> {
-                ppgIrListener.startTracker()
-            }
-            ppgRedListener -> {
-                ppgRedListener.startTracker()
-            }
+    private fun updateAccelerometerStatus() {
+        binding.message.visibility = View.VISIBLE
+        binding.message.text = when {
+            accelerometer == null -> getString(R.string.NoAccelerometerSupport)
+            currentState == ActivityCode.START_ACTIVITY && !isAccTracking -> getString(R.string.AccelerometerFailed)
+            else -> getString(R.string.accelerometer_samples, accCount)
         }
-
-        // start the foreground service
-        MainService.startService(this, "Tracker is running...")
-
-//        // check KEEP SCREEN ON flag
-//        val flags = window.attributes.flags
-//        if ((flags and WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) == 0)
-//            // if flag is not on, add the flag
-//            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
     }
 
-    /**
-     * Sets the app state and sends it to the Phone via INFO message.
-     *
-     * Supports state codes:
-     * - 0: DO_NOTHING / Stopped
-     * - 1: START_ACTIVITY / Running
-     * - 2: STOP_ACTIVITY / Stopped
-     * - 3: PAUSE_ACTIVITY / Paused
-     *
-     * If no `forceCode` is given, toggles between 0 and 1.
-     *
-     * @param forceCode Optional. Sets the state directly.
-     */
-    private fun switchState(forceCode: Int = 99) {
-        if (forceCode != 99) {
-            currentState = forceCode
-        }
-        else if (currentState == 0) {
-            currentState = 1
-        }
-        else if (currentState == 1 || currentState == ActivityCode.PAUSE_ACTIVITY) {
-            currentState = 0
-        }
-        message.code = currentState
-        message.content = "Wear state: $currentState"
-        sendMessage(message, MessagePath.INFO)
-        Log.d("Wear","stateNum changed to: $currentState")
+    private fun hasBodySensorPermission() = ContextCompat.checkSelfPermission(
+        this, Manifest.permission.BODY_SENSORS
+    ) == PackageManager.PERMISSION_GRANTED
+
+    override fun onDestroy() {
+        destroying = true
+        stopTrackers()
+        flushRemainingData()
+        currentState = ActivityCode.STOP_ACTIVITY
+        sendState()
+        connectionManager.disconnect()
+        Wearable.MessageApi.removeListener(client, messageListener)
+        drainUploads()
+        if (uploads.isEmpty()) MainService.stopService(this)
+        super.onDestroy()
     }
 
-    /**
-     * Checks whether all permissions required has been granted.
-     * @return Boolean value of whether all permissions required has been granted
-     */
-    private fun allPermissionsGranted() = REQUIRED_PERMISSIONS.all {
-        ContextCompat.checkSelfPermission(baseContext, it) ==
-                PackageManager.PERMISSION_GRANTED
-    }
+    override fun getAmbientCallback() = object : AmbientModeSupport.AmbientCallback() {}
 
     companion object {
-        /**
-         * Measurement duration for On-Demand data type in ms.
-         */
-        private const val ON_DEMAND_MEASUREMENT_DURATION = 30000 // 30k ms = 30 secs
-        private const val ON_DEMAND_MEASUREMENT_TICK = 250 // for ticking countdown timer
-        private const val REQUEST_CODE_PERMISSIONS = 10
-        private val REQUIRED_PERMISSIONS =
-            mutableListOf(
-                Manifest.permission.BODY_SENSORS,
-                Manifest.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS
-            ).toTypedArray()
+        private const val TAG = "Wear: MainActivity"
+        private const val REQUEST_PERMISSIONS = 10
     }
 }

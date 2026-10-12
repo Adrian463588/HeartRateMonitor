@@ -53,14 +53,14 @@ class MobileService : Service() {
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle("Main Foreground Service Sample App")
-            .setContentText("Recording...")
+            .setContentText(message ?: "Recording...")
             .setContentIntent(pendingIntent)
             .setOngoing(true)
             .build()
 
         startForeground(1, notification)
         isRunning = true
-        return START_STICKY
+        return START_NOT_STICKY
     }
 
     override fun onDestroy() {

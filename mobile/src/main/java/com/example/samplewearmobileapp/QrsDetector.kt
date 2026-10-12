@@ -30,7 +30,8 @@ class QrsDetector(activity: MainActivity) {
     private var threshold = mean + N_SIGMA * stdDev
 
     private var sampleCount = 0
-    private var startTime = Double.NaN
+    private val plotIndexOffset = (activity.ecgPlotter?.getDataIndex() ?: 0L).toInt()
+    private val ecgTimestamps = mutableListOf<Long>()
 
     // These keep track of the lowest and highest ECG values in the scoring
     // window. The max should correspond to R and the min to S. The normal
@@ -55,11 +56,12 @@ class QrsDetector(activity: MainActivity) {
 
     fun process(polarEcgData: PolarEcgData) {
         // Update the ECG plot (this also computes normalized timestamps)
-        ecgPlotter()?.addValues(polarEcgData)
+        val plotter = ecgPlotter() ?: return
+        plotter.addValues(polarEcgData)
 
         // Retrieve the timestamps computed by EcgPlotter for this batch
-        val batchTimestamps = ecgPlotter()?.getLastBatchTimestamps()
-            ?: LongArray(polarEcgData.samples.size)
+        val batchTimestamps = plotter.getLastBatchTimestamps()
+        if (batchTimestamps.size != polarEcgData.samples.size) return
 
         // samples contains the ecgValues values in μV, mv = .001 * μV;
         for ((idx, ecgDataSample) in polarEcgData.samples.withIndex()) {
@@ -74,8 +76,7 @@ class QrsDetector(activity: MainActivity) {
      */
     private fun detectQrs(ecgDataSample: PolarEcgData.PolarEcgDataSample, normalizedTimestamp: Long) {
         val ecg = MICRO_TO_MILLI_VOLT * ecgDataSample.voltage
-        // Record the start time as now.
-        if (java.lang.Double.isNaN(startTime)) startTime = Date().time.toDouble()
+        ecgTimestamps.add(normalizedTimestamp)
         ecgValues.add(ecg)
         sampleCount++
         cursorEcg.add(ecg)
@@ -163,7 +164,7 @@ class QrsDetector(activity: MainActivity) {
                             // Replace the old one
                             peakIndices.last = peakIndex
                             qrsPlotter()!!.replaceLastPeakValue(
-                                peakIndex,
+                                peakIndex + plotIndexOffset,
                                 maxEcg
                             )
                             //                            Log.d(TAG, "doAlgorithm: " +
@@ -175,7 +176,7 @@ class QrsDetector(activity: MainActivity) {
                         // Is not near a previous one, add it
                         peakIndices.add(peakIndex)
                         qrsPlotter()!!.addPeakValue(
-                            peakIndex,
+                            peakIndex + plotIndexOffset,
                             maxEcg
                         )
                         //                        Log.d(TAG, "doAlgorithm: " +
@@ -186,7 +187,7 @@ class QrsDetector(activity: MainActivity) {
                 } else {
                     // First peak
                     peakIndices.add(peakIndex)
-                    qrsPlotter()!!.addPeakValue(peakIndex, maxEcg)
+                    qrsPlotter()!!.addPeakValue(peakIndex + plotIndexOffset, maxEcg)
                     //                    Log.d(TAG, "doAlgorithm: " +
 //                            "addPeakValue:"
 //                            + " mPeakIndex=" + mPeakIndex
@@ -195,10 +196,9 @@ class QrsDetector(activity: MainActivity) {
 
                 // Do HR/RR plot
                 if (peakIndices.size > 1) {
-                    rr = 1000 / ECG_SAMPLE_RATE *
-                            (peakIndex - peakIndices[peakIndices.size - 2])
+                    rr = (ecgTimestamps[peakIndex] - ecgTimestamps[peakIndices[peakIndices.size - 2]]).toDouble()
                     hr = 60000.0 / rr
-                    if (!java.lang.Double.isInfinite(hr)) {
+                    if (rr > 0.0 && hr.isFinite()) {
 //                    movingAverageHr.add(hr);
                         movingAverageRr.add(rr)
                         // Wait to start plotting until HR average is well
@@ -208,7 +208,7 @@ class QrsDetector(activity: MainActivity) {
 //                        mMaxIndex / FS,
 //                                movingAverageHr.average(), rr);
                             hrPlotter()!!.addValues2(
-                                startTime + 1000 * peakIndex / ECG_SAMPLE_RATE,
+                                ecgTimestamps[peakIndex].toDouble(),
                                 60000.0 / movingAverageRr.average(), rr
                             )
                             hrPlotter()!!.fullUpdate()

@@ -56,4 +56,10 @@
     <string name="SdkPolicyError">SDK Policy denied</string>
     <string name="HealthPlatformVersionIsOutdated">Health Platform is outdated or not installed</string>
     <string name="ConnectionError">Could not connect to Health Tracking Service. Check error log.</string>
+    <string name="NoContinuousPpgSupport">Continuous PPG unavailable. Check Samsung Health Sensor service and permission.</string>
+    <string name="NoAccelerometerSupport">Accelerometer unavailable on this Watch.</string>
+    <string name="AccelerometerFailed">Accelerometer registration failed.</string>
+    <string name="UpdateBothApps">Install the current phone and Watch apps together.</string>
+    <string name="accelerometer_samples">Accelerometer: %1$d samples</string>
+    <string name="status_waiting">Waiting for samples</string>
 </resources>
