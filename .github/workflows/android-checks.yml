@@ -21,7 +21,7 @@ jobs:
           persist-credentials: false
       - name: Reject bundled SDKs, keys, recordings and generated files
         env:
-          PUBLICATION_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          PUBLICATION_BASE: ${{ github.event.pull_request.base.sha || (github.ref == 'refs/heads/main' && github.event.before) || '' }}
         run: |
           python3 -m unittest discover -s scripts -p 'test_*.py'
           if [ -n "$PUBLICATION_BASE" ] && [ "$PUBLICATION_BASE" != "0000000000000000000000000000000000000000" ]; then
