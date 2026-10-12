@@ -22,7 +22,7 @@
 - [x] Add executable BDD regressions covering reordered/duplicate commands, offline End, pause/resume retention, failed/pending Polar startup, cancel/reconnect and unchanged timing/batch contracts.
 - [x] Update OpenSpec acceptance, AGENTS feature/maintenance guide, download history and limitations.
 - [x] Pass all shared/mobile/wear unit tests, Android lint, both APK builds and available phone instrumentation.
-- [ ] Review scoped diff and publication contents; commit/push `Fix-issue`, verify CI and publish both v1.3.1 APKs with checksums/direct links.
+- [x] Review scoped diff and publication contents; commit/push `Fix-issue`, verify CI and publish both v1.3.1 APKs with checksums/direct links.
 - [ ] Physical Watch sensors-off/PPG/acceleration and real Polar ECG validation (pending devices; report explicitly).
 
 ## Method
@@ -81,4 +81,11 @@ Historic v1.3.0 receipt remains in `SENSOR_FIX_PLAN.md`.
 
 ## Publication
 
-Pending commit/push/CI/release verification; intended immutable tag `v1.3.1`. Preserve `v1.3.0` and `debug-2026-10-01` unchanged.
+- Source commit [97a346948e1cf36d64a2ed207afa483f2c4dcbf7](https://github.com/Adrian463588/HeartRateMonitor/commit/97a346948e1cf36d64a2ed207afa483f2c4dcbf7) pushed to `Fix-issue`.
+- [GitHub CI 38285970882](https://github.com/Adrian463588/HeartRateMonitor/actions/runs/38285970882) **passed** for that exact source commit (shared/mobile tests, phone lint/APK; full private-SDK Wear gates passed locally).
+- [v1.3.1 release](https://github.com/Adrian463588/HeartRateMonitor/releases/tag/v1.3.1) published as a debug prerelease; immutable tag resolves to the same source commit.
+- Exactly two uploaded APK assets; GitHub asset SHA-256 digests and sizes match the local table above.
+- [Phone APK](https://github.com/Adrian463588/HeartRateMonitor/releases/download/v1.3.1/mobile-debug.apk) and [Watch APK](https://github.com/Adrian463588/HeartRateMonitor/releases/download/v1.3.1/wear-debug.apk): direct links verified **HTTP 200**.
+- `v1.3.0` and `debug-2026-10-01` remain available unchanged. README lists all three historical downloads and matching-install instructions.
+- This receipt is a documentation-only follow-up; tested application source and release tag stay at the source commit above.
+- All requested software/delivery checklist items are complete. The sole unchecked hardware gate is explicit, as authorized while Watch/H10 are unavailable.
