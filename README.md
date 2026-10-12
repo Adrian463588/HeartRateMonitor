@@ -67,8 +67,8 @@ or changing its ID ends the current session before replacing the connection.
 
 ## Build and verify
 
-JDK 17, Android SDK platforms 32/33, Build Tools 34.0.0.
-Tooling: Gradle 8.6, AGP 8.4.0, Kotlin 1.9.24; Polar SDK 4.0.0.
+JDK 17, Android SDK platform 34, Build Tools 34.0.0.
+Tooling: Gradle 8.6, AGP 8.4.0, Kotlin 2.1.0; Polar SDK 4.0.0.
 Set `JAVA_HOME` to your JDK 17 installation. Android Studio Jellyfish or newer
 can use the same Gradle/JDK configuration.
 
@@ -86,6 +86,25 @@ Outputs: `mobile/build/outputs/apk/debug/mobile-debug.apk` and
 `wear/build/outputs/apk/debug/wear-debug.apk`.
 Public CI checks shared/phone tests, phone lint and phone build. Full Wear
 checks require the local private SDK and are required before each release.
+
+The merged source also retains `main` privacy controls: disabled backup/device
+transfer, private services/settings, reduced Bluetooth/location permissions
+and no raw signal/device-ID logs. Source changes are reviewed through a PR with
+merge commit. [Main/Fix-issue merge audit](MAIN_MERGE_AUDIT.md).
+
+Before publishing source, run the artifact/history policy and a redacted
+Gitleaks scan. CI runs these gates on `main`, `Fix-issue` and PRs, using pinned
+actions/checksums and a read-only token. Private AARs/APKs/keys/raw CSVs must stay
+untracked; existing release APKs are assets, not source files.
+
+```powershell
+python -m unittest discover -s scripts -p 'test_*.py'
+python scripts/check_publication.py --base origin/main
+```
+
+The old Polar SDK AAR remains in pre-existing Git history; this merge introduces
+no AAR. Existing tags/releases are preserved. The v1.3.1 download is the immutable
+previous release; merged-source verification is recorded separately in the audit.
 
 Software checks and warning counts: [session repair plan/evidence](SESSION_CONTROL_FIX_PLAN.md).
 **Galaxy Watch and Polar physical sensor/session acceptance is unverified for

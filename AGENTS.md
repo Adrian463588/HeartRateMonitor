@@ -63,7 +63,7 @@
 
 ## Build and release gates
 
-- Gradle 8.6 / AGP 8.4.0 / Kotlin 1.9.24 / JDK 17 via `JAVA_HOME`; no absolute JDK path in `gradle.properties`.
+- Gradle 8.6 / AGP 8.4.0 / Kotlin 2.1.0 / JDK 17 via `JAVA_HOME`; no absolute JDK path in `gradle.properties`.
 - Samsung Health Sensor SDK 1.4.1 AAR belongs only in ignored `wear/libs/`. Public CI checks shared/mobile; full Wear gates must run locally with the private SDK.
 - Focused regressions: `:shared:test --tests '*WatchControlTest'` or `:mobile:testDebugUnitTest --tests '*EcgStreamControllerTest'`; Android lint has module/task scope.
 - Full required gates before release:
@@ -74,7 +74,10 @@
 git diff --check
 ```
 
-- Record exact test/error/warning counts and APK hashes in the plan. Explicitly allowlist staged paths, scan publication content, commit/push only authorized `Fix-issue`; preserve main/upstream and history.
+- Record exact test/error/warning counts and APK hashes in the plan. Explicitly allowlist staged paths, scan publication content, deliver only to the authorized fork/branches; update `main` through a tested PR and merge commit when requested. Preserve upstream and existing history/tags.
+- Run `python -m unittest discover -s scripts -p 'test_*.py'` and `python scripts/check_publication.py --base origin/main` before publishing. Scan staged/current files and reachable history with redacted Gitleaks; CI repeats both gates on `main`, `Fix-issue`, and PRs. Keep action SHAs, tool/distribution checksums and read-only workflow permissions.
+- Backup/device transfer must remain disabled; settings/services private. Do not log raw sensor values, device IDs or received message contents. SDK 34 Wear health service requires Body Sensors or granted Activity Recognition; denial stays visible.
+- Existing Polar AAR is retained only in pre-existing Git history. No AAR may be added to current/incoming source; history cleanup requires explicit rewrite authorization. Merge evidence: [MAIN_MERGE_AUDIT.md](MAIN_MERGE_AUDIT.md).
 - Keep AARs, real session CSVs, APKs, credentials and keystores out of commits. Publish only matching phone/Watch debug APK assets; preserve old releases and direct download links in README.
 - AI commits include `Co-Authored-By: Codex (GPT-6) <noreply@openai.com>`.
 - Physical Watch/H10 acceptance remains **unchecked** without the devices: record actual model/firmware/permissions, rates/counts/CSV hashes, timestamp gaps, repeated rapid controls, LEDs off, reconnect and absence/error behavior.

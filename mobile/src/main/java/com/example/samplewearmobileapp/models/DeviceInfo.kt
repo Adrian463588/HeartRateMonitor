@@ -1,6 +1,6 @@
 package com.example.samplewearmobileapp.models
 
 /**
- * Class to hold a name and device ID.
+ * Data class to hold a device name and its unique identifier.
  */
-class DeviceInfo(var name: String, var id: String)
+data class DeviceInfo(var name: String, var id: String)

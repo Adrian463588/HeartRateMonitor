@@ -39,17 +39,10 @@ class PpgRedListener internal constructor() : Listener() {
     }
 
     fun readValuesFromDataPoint(dataPoint: DataPoint) {
-        Log.i(tag, "Timestamp : " + dataPoint.timestamp)
-        Log.i(
-            tag,
-            "Ppg InfraRed Value : " + dataPoint.getValue(ValueKey.PpgRedSet.PPG_RED)
-        )
-
         val ppgRedData = PpgRedData()
         ppgRedData.ppgValue = dataPoint.getValue(ValueKey.PpgRedSet.PPG_RED)
         ppgRedData.timestamp = dataPoint.timestamp
 
         TrackerDataNotifier.instance?.notifyPpgRedTrackerObservers(ppgRedData)
-        Log.d(tag, dataPoint.toString())
     }
 }

@@ -57,12 +57,6 @@ class PpgPlotter: PlotterListener {
      */
     private var dataIndex: Long = 0
 
-//    /**
-//     * This is the time of the last occurrence of a value added to the plot.
-//     * Used to set the domain and range boundaries.
-//     */
-//    private var lastTime = Double.NaN
-//    private var startTime = Double.NaN
     private var runningMax: RunningMax = RunningMax(N_PPG_IR_RED_PLOT_POINTS)
 
     /**
@@ -148,19 +142,11 @@ class PpgPlotter: PlotterListener {
 
             // Range labels will increment by 1
             plot.setRangeStep(StepMode.SUBDIVIDE, 8.0)
-//            plot.graph.setLineLabelEdges(
-//                XYGraphWidget.Edge.LEFT
-//            )
-//            // Make left labels be an integer (no decimal places)
-//            plot.graph.getLineLabelStyle(XYGraphWidget.Edge.LEFT).format = DecimalFormat("#")
 
             // Set the domain block to be .25 of visible limit
             // to match the ECG Plot
             plot.setDomainStep(StepMode.INCREMENT_BY_VAL, visiblePointLimit * .25)
-//            plot.linesPerDomainLabel = 5
 
-//            // Allow panning
-//            PanZoom.attach(mPlot, PanZoom.Pan.HORIZONTAL, PanZoom.Zoom.NONE);
             update()
         } catch (ex: Exception) {
             val msg = """Error in PpgPlotter.setupPlot:
@@ -191,23 +177,10 @@ class PpgPlotter: PlotterListener {
         dataIndex++
 
         // Reset the domain boundaries
-//        updateDomainBoundaries()
         updateDomainRangeBoundaries()
         update()
     }
 
-//    private fun updateDomainBoundaries() {
-//        val plotMin: Long = dataIndex - Constants.N_ECG_PLOT_POINTS
-//        val plotMax: Long = dataIndex
-//        plot.setDomainBoundaries(plotMin, plotMax, BoundaryMode.FIXED)
-//    }
-
-    // TODO: (This issue is caused by missing data on transport.
-    //  Fix transport issue first to see if this is a real issue.)
-    //  Domain is way off from 4 seconds.
-    //  PPG Green has 300 data point per 12 seconds,
-    //  so normally it would go the whole screen 3 times
-    //  but it only went around 1/3 of the screen
 
 
     private fun updateDomainRangeBoundaries() {

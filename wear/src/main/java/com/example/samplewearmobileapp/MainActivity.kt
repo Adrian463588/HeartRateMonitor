@@ -6,6 +6,7 @@ import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -155,7 +156,9 @@ class MainActivity : FragmentActivity(), GoogleApiClient.ConnectionCallbacks,
         client.connect()
         updateAccelerometerStatus()
         if (hasBodySensorPermission()) connectSamsung()
-        else ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.BODY_SENSORS), REQUEST_PERMISSIONS)
+        else ActivityCompat.requestPermissions(this,
+            if (Build.VERSION.SDK_INT >= 34) arrayOf(Manifest.permission.BODY_SENSORS, Manifest.permission.ACTIVITY_RECOGNITION)
+            else arrayOf(Manifest.permission.BODY_SENSORS), REQUEST_PERMISSIONS)
     }
 
     private fun connectSamsung() {

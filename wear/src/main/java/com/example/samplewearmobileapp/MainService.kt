@@ -18,6 +18,8 @@ class MainService : Service() {
 
     companion object {
         private const val CHANNEL_ID = "MainService"
+        @Volatile var isRunning = false
+            private set
 
         fun startService(context: Context, message: String) {
             ContextCompat.startForegroundService(context,
@@ -50,11 +52,13 @@ class MainService : Service() {
                 .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "HeartRateMonitor:WatchRecording")
             if (wakeLock?.isHeld != true) wakeLock?.acquire()
         }
+        isRunning = true
         return START_NOT_STICKY
     }
 
     override fun onDestroy() {
         if (wakeLock?.isHeld == true) wakeLock?.release()
+        isRunning = false
         super.onDestroy()
     }
 

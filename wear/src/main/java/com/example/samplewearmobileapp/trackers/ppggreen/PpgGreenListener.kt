@@ -44,11 +44,6 @@ class PpgGreenListener internal constructor() : Listener() {
     }
 
     fun readValuesFromDataPoint(dataPoint: DataPoint) {
-        Log.i(tag, "Timestamp : " + dataPoint.timestamp)
-        Log.i(
-            tag,
-            "Ppg Green Value : " + dataPoint.getValue(ValueKey.PpgGreenSet.PPG_GREEN)
-        )
 
         val ppgGreenData = PpgGreenData()
         ppgGreenData.status = PpgGreenStatus.PPG_GREEN_STATUS_GOOD.code
@@ -56,7 +51,6 @@ class PpgGreenListener internal constructor() : Listener() {
         ppgGreenData.timestamp = dataPoint.timestamp
 
         TrackerDataNotifier.instance?.notifyPpgGreenTrackerObservers(ppgGreenData)
-        Log.d(tag, dataPoint.toString())
     }
 
 }
